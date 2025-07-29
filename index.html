@@ -275,7 +275,7 @@
         await testSimpleTransaction(connection, provider, status);
         
         // 如果简单交易成功，再创建 NFT
-        // await createSolanaNFT(connection, provider, name, desc, file, status);
+        await createSolanaNFT(connection, provider, name, desc, file, status);
       } catch (err) {
         console.error(err);
         status.textContent = "❌ 出错了: " + err.message;
@@ -284,7 +284,7 @@
     
     // 测试简单交易
     async function testSimpleTransaction(connection, provider, status) {
-      status.textContent = "🧪 正在测试简单交易...";
+      status.textContent = "🧪 正在测试网络连接...";
       
       // 创建一个简单的转账交易
       const transaction = new solanaWeb3.Transaction();
@@ -304,7 +304,7 @@
       const txid = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txid);
       
-      status.textContent = `✅ 测试交易成功！\n\n交易哈希：${txid}\n\n现在可以尝试创建 NFT 了！`;
+      status.textContent = "✅ 网络连接正常，开始创建 NFT...";
     }
   </script>
 </body>
