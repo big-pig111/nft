@@ -6,11 +6,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   
+  <!-- Buffer Polyfill for browser -->
+  <script src="https://bundle.run/buffer@6.0.3"></script>
+  <script>
+    window.Buffer = buffer.Buffer;
+  </script>
+  
   <!-- Solana Web3.js -->
   <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
   
   <script>
     console.log("Solana Web3.js 加载成功");
+    console.log("Buffer 可用:", typeof window.Buffer !== 'undefined');
   </script>
 </head>
 <body class="bg-gray-100">
@@ -62,6 +69,12 @@
       }
       if (!name) {
         status.textContent = "❌ 请输入名称";
+        return;
+      }
+
+      // 检查 Buffer 是否可用
+      if (typeof window.Buffer === 'undefined') {
+        status.textContent = "❌ Buffer 未定义，请刷新页面重试";
         return;
       }
 
