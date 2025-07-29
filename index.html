@@ -81,100 +81,151 @@
         const mintKeypair = solanaWeb3.Keypair.generate();
         console.log("Mint 地址:", mintKeypair.publicKey.toString());
         
-        // 计算所需的 lamports
+        // 第一步：创建 mint 账户
+        status.textContent = "📝 步骤 1/3: 创建 Mint 账户...";
         const lamports = await connection.getMinimumBalanceForRentExemption(82);
-        console.log("所需 lamports:", lamports);
-      
-      // 创建交易
-      const transaction = new solanaWeb3.Transaction();
-      
-      // 创建 mint 账户
-      transaction.add(
-        solanaWeb3.SystemProgram.createAccount({
-          fromPubkey: provider.publicKey,
-          newAccountPubkey: mintKeypair.publicKey,
-          lamports: lamports,
-          space: 82,
-          programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
-        })
-      );
-      
-      // 初始化 mint（设置小数位为 0，使其成为 NFT）
-      const initMintData = Buffer.alloc(82);
-      initMintData.writeUInt8(0, 0); // InitializeMint instruction
-      initMintData.writeUInt8(0, 1); // decimals = 0 (NFT)
-      
-      // 写入 mint authority
-      const mintAuthorityBytes = provider.publicKey.toBuffer();
-      mintAuthorityBytes.copy(initMintData, 2);
-      
-      // 写入 freeze authority
-      const freezeAuthorityBytes = provider.publicKey.toBuffer();
-      freezeAuthorityBytes.copy(initMintData, 34);
-      
-      transaction.add(
-        new solanaWeb3.TransactionInstruction({
-          keys: [
-            { pubkey: mintKeypair.publicKey, isSigner: false, isWritable: true },
-            { pubkey: new solanaWeb3.PublicKey("11111111111111111111111111111111"), isSigner: false, isWritable: false },
-          ],
-          programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
-          data: initMintData,
-        })
-      );
-      
-      // 创建关联代币账户
-      const associatedTokenAccount = await getAssociatedTokenAddress(
-        mintKeypair.publicKey,
-        provider.publicKey
-      );
-      
-      transaction.add(
-        createAssociatedTokenAccountInstruction(
-          provider.publicKey,
-          associatedTokenAccount,
-          provider.publicKey,
-          mintKeypair.publicKey
-        )
-      );
-      
-      // 铸造 1 个代币到关联账户
-      transaction.add(
-        createMintToInstruction(
-          mintKeypair.publicKey,
-          associatedTokenAccount,
-          provider.publicKey,
-          1
-        )
-      );
-      
-      // 设置交易参数
-      transaction.feePayer = provider.publicKey;
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      
-      // 签名并发送交易
-      transaction.sign(mintKeypair);
-      const signedTx = await provider.signTransaction(transaction);
-      const txid = await connection.sendRawTransaction(signedTx.serialize());
-      await connection.confirmTransaction(txid);
-      
-      // 创建简单的元数据（存储在本地）
-      const metadata = {
-        name: name,
-        description: desc,
-        image: await fileToBase64(file),
-        attributes: [
-          { trait_type: "Creator", value: "Solana NFT Tool" },
-          { trait_type: "Created", value: new Date().toISOString() }
-        ]
-      };
-      
-      status.textContent = `✅ NFT 创建成功！\n\n🎨 NFT 名称：${name}\n📝 描述：${desc}\n🔗 Mint 地址：${mintKeypair.publicKey.toString()}\n💰 代币账户：${associatedTokenAccount.toString()}\n📊 交易哈希：${txid}\n\n🌐 查看交易：https://explorer.solana.com/tx/${txid}\n🔍 查看 NFT：https://explorer.solana.com/address/${mintKeypair.publicKey.toString()}\n\n💾 元数据已保存到本地`;
-    } catch (err) {
-      console.error(err);
-      status.textContent = "❌ 出错了: " + err.message;
-    }
+        
+        const createAccountTx = new solanaWeb3.Transaction();
+        createAccountTx.add(
+          solanaWeb3.SystemProgram.createAccount({
+            fromPubkey: provider.publicKey,
+            newAccountPubkey: mintKeypair.publicKey,
+            lamports: lamports,
+            space: 82,
+            programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+          })
+        );
+        
+        createAccountTx.feePayer = provider.publicKey;
+        const { blockhash: blockhash1 } = await connection.getLatestBlockhash();
+        createAccountTx.recentBlockhash = blockhash1;
+        
+        createAccountTx.sign(mintKeypair);
+        const signedCreateTx = await provider.signTransaction(createAccountTx);
+        const createTxid = await connection.sendRawTransaction(signedCreateTx.serialize());
+        await connection.confirmTransaction(createTxid);
+        
+        console.log("Mint 账户创建成功:", createTxid);
+        
+        // 第二步：初始化 mint
+        status.textContent = "🔧 步骤 2/3: 初始化 Mint...";
+        const initTx = new solanaWeb3.Transaction();
+        
+        // 使用正确的初始化指令
+        const initData = Buffer.alloc(82);
+        initData.writeUInt8(0, 0); // InitializeMint
+        initData.writeUInt8(0, 1); // decimals = 0
+        
+        // 写入 mint authority
+        provider.publicKey.toBuffer().copy(initData, 2);
+        
+        // 写入 freeze authority (null)
+        new solanaWeb3.PublicKey("11111111111111111111111111111111").toBuffer().copy(initData, 34);
+        
+        initTx.add(
+          new solanaWeb3.TransactionInstruction({
+            keys: [
+              { pubkey: mintKeypair.publicKey, isSigner: false, isWritable: true },
+              { pubkey: new solanaWeb3.PublicKey("11111111111111111111111111111111"), isSigner: false, isWritable: false },
+            ],
+            programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+            data: initData,
+          })
+        );
+        
+        initTx.feePayer = provider.publicKey;
+        const { blockhash: blockhash2 } = await connection.getLatestBlockhash();
+        initTx.recentBlockhash = blockhash2;
+        
+        const signedInitTx = await provider.signTransaction(initTx);
+        const initTxid = await connection.sendRawTransaction(signedInitTx.serialize());
+        await connection.confirmTransaction(initTxid);
+        
+        console.log("Mint 初始化成功:", initTxid);
+        
+        // 第三步：创建代币账户并铸造
+        status.textContent = "🪙 步骤 3/3: 创建代币账户并铸造...";
+        
+        // 创建简单的代币账户（不使用关联代币账户）
+        const tokenAccount = solanaWeb3.Keypair.generate();
+        const tokenAccountLamports = await connection.getMinimumBalanceForRentExemption(165);
+        
+        const mintTx = new solanaWeb3.Transaction();
+        
+        // 创建代币账户
+        mintTx.add(
+          solanaWeb3.SystemProgram.createAccount({
+            fromPubkey: provider.publicKey,
+            newAccountPubkey: tokenAccount.publicKey,
+            lamports: tokenAccountLamports,
+            space: 165,
+            programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+          })
+        );
+        
+        // 初始化代币账户
+        const initAccountData = Buffer.alloc(165);
+        initAccountData.writeUInt8(1, 0); // InitializeAccount
+        mintKeypair.publicKey.toBuffer().copy(initAccountData, 1);
+        provider.publicKey.toBuffer().copy(initAccountData, 33);
+        
+        mintTx.add(
+          new solanaWeb3.TransactionInstruction({
+            keys: [
+              { pubkey: tokenAccount.publicKey, isSigner: false, isWritable: true },
+              { pubkey: mintKeypair.publicKey, isSigner: false, isWritable: false },
+              { pubkey: provider.publicKey, isSigner: false, isWritable: false },
+              { pubkey: new solanaWeb3.PublicKey("11111111111111111111111111111111"), isSigner: false, isWritable: false },
+            ],
+            programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+            data: initAccountData,
+          })
+        );
+        
+        // 铸造代币
+        const mintToData = Buffer.alloc(9);
+        mintToData.writeUInt8(7, 0); // MintTo
+        mintToData.writeBigUInt64LE(BigInt(1), 1);
+        
+        mintTx.add(
+          new solanaWeb3.TransactionInstruction({
+            keys: [
+              { pubkey: mintKeypair.publicKey, isSigner: false, isWritable: true },
+              { pubkey: tokenAccount.publicKey, isSigner: false, isWritable: true },
+              { pubkey: provider.publicKey, isSigner: true, isWritable: false },
+            ],
+            programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+            data: mintToData,
+          })
+        );
+        
+        mintTx.feePayer = provider.publicKey;
+        const { blockhash: blockhash3 } = await connection.getLatestBlockhash();
+        mintTx.recentBlockhash = blockhash3;
+        
+        mintTx.sign(tokenAccount);
+        const signedMintTx = await provider.signTransaction(mintTx);
+        const mintTxid = await connection.sendRawTransaction(signedMintTx.serialize());
+        await connection.confirmTransaction(mintTxid);
+        
+        console.log("代币铸造成功:", mintTxid);
+        
+        // 创建元数据
+        const metadata = {
+          name: name,
+          description: desc,
+          image: await fileToBase64(file),
+          attributes: [
+            { trait_type: "Creator", value: "Solana NFT Tool" },
+            { trait_type: "Created", value: new Date().toISOString() }
+          ]
+        };
+        
+        status.textContent = `✅ NFT 创建成功！\n\n🎨 NFT 名称：${name}\n📝 描述：${desc}\n🔗 Mint 地址：${mintKeypair.publicKey.toString()}\n💰 代币账户：${tokenAccount.publicKey.toString()}\n📊 创建交易：${createTxid}\n📊 初始化交易：${initTxid}\n📊 铸造交易：${mintTxid}\n\n🌐 查看 Mint：https://explorer.solana.com/address/${mintKeypair.publicKey.toString()}\n💾 元数据已保存到本地`;
+      } catch (err) {
+        console.error(err);
+        status.textContent = "❌ 出错了: " + err.message;
+      }
     }
     
     // 辅助函数：文件转 Base64
