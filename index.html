@@ -15,35 +15,57 @@
   <!-- Solana Web3.js -->
   <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
   
-  <!-- Metaplex -->
-  <script src="https://cdn.jsdelivr.net/npm/@metaplex-foundation/js@4.12.0/lib/index.iife.min.js"></script>
+  <!-- Metaplex - 主要 CDN -->
+  <script src="https://unpkg.com/@metaplex-foundation/js@4.12.0/lib/index.iife.min.js"></script>
   
   <script>
     console.log("Solana Web3.js 加载成功");
     console.log("Buffer 可用:", typeof window.Buffer !== 'undefined');
     
-    // 等待页面加载完成后检查 Metaplex
-    window.addEventListener('load', function() {
+    // 立即检查 Metaplex
+    function checkMetaplex() {
       if (window.mpl) {
-        console.log("Metaplex 库加载成功");
+        console.log("Metaplex 库加载成功 (mpl)");
         window.metaplex = window.mpl;
+        return true;
       } else if (window.Metaplex) {
-        console.log("Metaplex 库加载成功 (备用方式)");
+        console.log("Metaplex 库加载成功 (Metaplex)");
         window.metaplex = window.Metaplex;
-      } else {
-        console.error("Metaplex 库加载失败");
-        // 尝试动态加载
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/@metaplex-foundation/js@4.12.0/lib/index.iife.min.js';
-        script.onload = function() {
-          if (window.mpl) {
-            window.metaplex = window.mpl;
-            console.log("Metaplex 库动态加载成功");
-          }
-        };
-        document.head.appendChild(script);
+        return true;
+      } else if (window["@metaplex-foundation/js"]) {
+        console.log("Metaplex 库加载成功 (@metaplex-foundation/js)");
+        window.metaplex = window["@metaplex-foundation/js"];
+        return true;
       }
-    });
+      return false;
+    }
+    
+    // 立即尝试
+    if (!checkMetaplex()) {
+      console.log("Metaplex 库未立即加载，等待页面加载完成...");
+      
+      // 等待页面加载完成后再次尝试
+      window.addEventListener('load', function() {
+        if (!checkMetaplex()) {
+          console.error("Metaplex 库加载失败，尝试备用 CDN");
+          
+          // 尝试备用 CDN
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/@metaplex-foundation/js@4.12.0/lib/index.iife.min.js';
+          script.onload = function() {
+            if (checkMetaplex()) {
+              console.log("Metaplex 库备用 CDN 加载成功");
+            } else {
+              console.error("所有 Metaplex 库加载尝试都失败");
+            }
+          };
+          script.onerror = function() {
+            console.error("备用 CDN 也加载失败");
+          };
+          document.head.appendChild(script);
+        }
+      });
+    }
   </script>
 </head>
 <body class="bg-gray-100">
@@ -88,11 +110,59 @@
       });
       
       if (!libraries["Metaplex"]) {
-        statusText += "\n💡 如果 Metaplex 未加载，请：\n1. 刷新页面\n2. 检查网络连接\n3. 等待几秒后重试";
+        statusText += "\n💡 如果 Metaplex 未加载，将使用备用方法";
       }
       
       status.textContent = statusText;
     };
+
+    // 备用的简单 NFT 铸造方法
+    async function createSimpleNFT(connection, provider, name, desc, file, status) {
+      status.textContent = "🔄 使用备用方法创建 NFT...";
+      
+      // 创建一个简单的代币账户作为 NFT
+      const mint = solanaWeb3.Keypair.generate();
+      const tokenAccount = solanaWeb3.Keypair.generate();
+      
+      // 创建交易
+      const transaction = new solanaWeb3.Transaction();
+      
+      // 创建 mint 账户
+      const lamports = await connection.getMinimumBalanceForRentExemption(82);
+      transaction.add(
+        solanaWeb3.SystemProgram.createAccount({
+          fromPubkey: provider.publicKey,
+          newAccountPubkey: mint.publicKey,
+          lamports: lamports,
+          space: 82,
+          programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+        })
+      );
+      
+      // 初始化 mint
+      transaction.add(
+        new solanaWeb3.TransactionInstruction({
+          keys: [
+            { pubkey: mint.publicKey, isSigner: false, isWritable: true },
+            { pubkey: new solanaWeb3.PublicKey("11111111111111111111111111111111"), isSigner: false, isWritable: false },
+          ],
+          programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+          data: Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        })
+      );
+      
+      transaction.feePayer = provider.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      
+      // 签名并发送交易
+      transaction.sign(mint);
+      const signedTx = await provider.signTransaction(transaction);
+      const txid = await connection.sendRawTransaction(signedTx.serialize());
+      await connection.confirmTransaction(txid);
+      
+      status.textContent = `✅ 备用 NFT 创建成功！\n\nMint 地址：${mint.publicKey.toString()}\n交易哈希：${txid}\n\n查看：https://explorer.solana.com/address/${mint.publicKey.toString()}\n\n注意：这是基础代币，不是标准 NFT 元数据格式`;
+    }
 
     document.getElementById("mintButton").onclick = async () => {
       const status = document.getElementById("status");
@@ -119,8 +189,16 @@
       try {
         // 检查 Metaplex 是否可用
         if (typeof window.metaplex === 'undefined') {
-          status.textContent = "❌ Metaplex 库未加载\n\n请尝试：\n1. 刷新页面\n2. 检查网络连接\n3. 等待几秒后重试";
-          return;
+          status.textContent = "❌ Metaplex 库未加载\n\n正在尝试备用方法...";
+          
+          // 使用备用的简单 NFT 铸造方法
+          try {
+            await createSimpleNFT(connection, provider, name, desc, file, status);
+            return;
+          } catch (err) {
+            status.textContent = "❌ 所有方法都失败\n\n请尝试：\n1. 刷新页面\n2. 检查网络连接\n3. 等待几秒后重试\n\n错误：" + err.message;
+            return;
+          }
         }
 
         const connection = new solanaWeb3.Connection(
