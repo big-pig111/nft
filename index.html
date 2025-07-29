@@ -29,57 +29,109 @@
         return;
       }
 
-      const heliusUrl = "https://api.helius.xyz/v0/transactions/search?api-key=17d82c3f-fbe0-451c-a882-70de20ad4162";
-
-      const body = {
-        jsonrpc: "2.0",
-        id: "getTokenTransactions",
-        method: "searchTransactions",
-        params: {
-          "query": {
-            "rawTokenTransfers": {
-              "mint": tokenAddress
-            }
-          },
-          "options": {
-            "limit": 20,
-            "sort": "desc"
-          }
-        }
-      };
-
       try {
-        const res = await fetch(heliusUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
+        resultDiv.textContent = "正在查询中，请稍候...";
+        
+        // 尝试使用服务器端函数（如果已部署）
+        let apiUrl = "/api/helius-proxy";
+        let useProxy = false;
+        
+        try {
+          const res = await fetch(apiUrl, {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ tokenAddress })
+          });
 
-        if (!res.ok) {
-          throw new Error(`请求失败: ${res.status}`);
+          if (res.ok) {
+            const data = await res.json();
+            
+            if (data.error) {
+              throw new Error(data.error);
+            }
+
+            if (!data.result || data.result.length === 0) {
+              resultDiv.textContent = "没有找到相关交易记录。";
+              return;
+            }
+
+            let output = "";
+            data.result.forEach((tx, index) => {
+              const time = new Date(tx.timestamp * 1000).toLocaleString();
+              const sig = tx.signature;
+              const amount = tx.rawTokenTransfers?.[0]?.tokenAmount || "未知";
+              const from = tx.rawTokenTransfers?.[0]?.fromUserAccount || "未知";
+              const to = tx.rawTokenTransfers?.[0]?.toUserAccount || "未知";
+
+              output += `🟢 第 ${index + 1} 条交易\n时间: ${time}\n签名: ${sig}\n数量: ${amount}\nFrom: ${from}\nTo: ${to}\n\n`;
+            });
+
+            resultDiv.textContent = output;
+            return;
+          }
+        } catch (serverError) {
+          console.log("服务器端函数不可用，使用 CORS 代理...");
+          useProxy = true;
         }
 
-        const data = await res.json();
+        // 如果服务器端函数不可用，使用 CORS 代理
+        if (useProxy) {
+          const corsProxy = "https://api.allorigins.win/raw?url=";
+          const heliusUrl = "https://api.helius.xyz/v0/transactions/search?api-key=17d82c3f-fbe0-451c-a882-70de20ad4162";
 
-        if (!data.result || data.result.length === 0) {
-          resultDiv.textContent = "没有找到相关交易记录。";
-          return;
+          const body = {
+            jsonrpc: "2.0",
+            id: "getTokenTransactions",
+            method: "searchTransactions",
+            params: {
+              "query": {
+                "rawTokenTransfers": {
+                  "mint": tokenAddress
+                }
+              },
+              "options": {
+                "limit": 20,
+                "sort": "desc"
+              }
+            }
+          };
+
+          const res = await fetch(corsProxy + encodeURIComponent(heliusUrl), {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(body)
+          });
+
+          if (!res.ok) {
+            throw new Error(`请求失败: ${res.status} - ${res.statusText}`);
+          }
+
+          const data = await res.json();
+
+          if (!data.result || data.result.length === 0) {
+            resultDiv.textContent = "没有找到相关交易记录。";
+            return;
+          }
+
+          let output = "";
+          data.result.forEach((tx, index) => {
+            const time = new Date(tx.timestamp * 1000).toLocaleString();
+            const sig = tx.signature;
+            const amount = tx.rawTokenTransfers?.[0]?.tokenAmount || "未知";
+            const from = tx.rawTokenTransfers?.[0]?.fromUserAccount || "未知";
+            const to = tx.rawTokenTransfers?.[0]?.toUserAccount || "未知";
+
+            output += `🟢 第 ${index + 1} 条交易\n时间: ${time}\n签名: ${sig}\n数量: ${amount}\nFrom: ${from}\nTo: ${to}\n\n`;
+          });
+
+          resultDiv.textContent = output;
         }
-
-        let output = "";
-        data.result.forEach((tx, index) => {
-          const time = new Date(tx.timestamp * 1000).toLocaleString();
-          const sig = tx.signature;
-          const amount = tx.rawTokenTransfers?.[0]?.tokenAmount || "未知";
-          const from = tx.rawTokenTransfers?.[0]?.fromUserAccount || "未知";
-          const to = tx.rawTokenTransfers?.[0]?.toUserAccount || "未知";
-
-          output += `🟢 第 ${index + 1} 条交易\n时间: ${time}\n签名: ${sig}\n数量: ${amount}\nFrom: ${from}\nTo: ${to}\n\n`;
-        });
-
-        resultDiv.textContent = output;
       } catch (err) {
-        resultDiv.textContent = `查询失败: ${err.message}`;
+        resultDiv.textContent = `查询失败: ${err.message}\n\n请确保：\n1. 服务器端函数已正确部署到 Vercel\n2. 或者清除浏览器缓存后重试`;
         console.error(err);
       }
     }
