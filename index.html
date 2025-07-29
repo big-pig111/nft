@@ -1,149 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Solana Token Tracker</title>
+  <meta charset="UTF-8" />
+  <title>Solana Token Transactions Viewer</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f2f2f2;
-      padding: 2rem;
-    }
-    .container {
-      max-width: 800px;
-      margin: auto;
-      background: white;
-      padding: 2rem;
-      border-radius: 12px;
-      box-shadow: 0 0 12px rgba(0,0,0,0.1);
-    }
-    input {
-      width: 100%;
-      padding: 10px;
-      margin-bottom: 1rem;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-    }
-    button {
-      padding: 10px 20px;
-      background: #1e90ff;
-      border: none;
-      border-radius: 8px;
-      color: white;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #0074e4;
-    }
-    .tx {
-      padding: 1rem;
-      margin: 1rem 0;
-      background: #f9f9f9;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-    }
-    .tx a {
-      color: #1e90ff;
-      text-decoration: none;
-    }
-    .tx a:hover {
-      text-decoration: underline;
-    }
-    .loading {
-      color: #888;
-    }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    input, button { margin: 10px 0; padding: 8px; width: 100%; }
+    #result { margin-top: 20px; white-space: pre-wrap; background: #f5f5f5; padding: 10px; border-radius: 8px; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h2>🔍 查询 Solana Token Mint 交易记录</h2>
-    <input id="mintInput" placeholder="输入 token mint 地址">
-    <button onclick="queryTransactions()">查询</button>
-    <div id="result" class="loading"></div>
-  </div>
+  <h2>🔍 查询 Solana 上指定代币的交易记录</h2>
+
+  <label for="tokenAddress">输入代币 Mint 地址：</label>
+  <input type="text" id="tokenAddress" placeholder="如：So11111111111111111111111111111111111111112" />
+
+  <button onclick="queryTransactions()">查询最近 20 条交易记录</button>
+
+  <div id="result">结果将在这里显示</div>
 
   <script>
-    const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=17d82c3f-fbe0-451c-a882-70de20ad4162";
-
     async function queryTransactions() {
-      const mint = document.getElementById("mintInput").value.trim();
+      const tokenAddress = document.getElementById("tokenAddress").value.trim();
       const resultDiv = document.getElementById("result");
-      resultDiv.innerHTML = "<p class='loading'>正在查询，请稍候...</p>";
 
-      if (!mint || mint.length < 32) {
-        resultDiv.innerHTML = "<p style='color:red'>请输入有效的 token mint 地址。</p>";
+      if (!tokenAddress) {
+        resultDiv.textContent = "请输入一个代币 mint 地址。";
         return;
       }
 
+      const heliusUrl = "https://rpc.helius.xyz/?api-key=17d82c3f-fbe0-451c-a882-70de20ad4162";
+
+      const body = {
+        jsonrpc: "2.0",
+        id: "getTokenTransactions",
+        method: "searchTransactions",
+        params: {
+          "query": {
+            "rawTokenTransfers": {
+              "mint": tokenAddress
+            }
+          },
+          "options": {
+            "limit": 20,
+            "sort": "desc"
+          }
+        }
+      };
+
       try {
-        const sigsRes = await fetch(RPC_URL, {
+        const res = await fetch(heliusUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "getSignaturesForAddress",
-            params: [mint, { limit: 20 }]
-          })
+          body: JSON.stringify(body)
         });
 
-        const sigsJson = await sigsRes.json();
-        const signatures = sigsJson.result;
+        if (!res.ok) {
+          throw new Error(`请求失败: ${res.status}`);
+        }
 
-        if (!signatures || signatures.length === 0) {
-          resultDiv.innerHTML = "<p>没有查询到交易记录。</p>";
+        const data = await res.json();
+
+        if (!data.result || data.result.length === 0) {
+          resultDiv.textContent = "没有找到相关交易记录。";
           return;
         }
 
         let output = "";
+        data.result.forEach((tx, index) => {
+          const time = new Date(tx.timestamp * 1000).toLocaleString();
+          const sig = tx.signature;
+          const amount = tx.rawTokenTransfers?.[0]?.tokenAmount || "未知";
+          const from = tx.rawTokenTransfers?.[0]?.fromUserAccount || "未知";
+          const to = tx.rawTokenTransfers?.[0]?.toUserAccount || "未知";
 
-        for (const sig of signatures) {
-          const txRes = await fetch(RPC_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              method: "getParsedTransaction",
-              params: [sig.signature, { maxSupportedTransactionVersion: 0 }]
-            })
-          });
+          output += `🟢 第 ${index + 1} 条交易\n时间: ${time}\n签名: ${sig}\n数量: ${amount}\nFrom: ${from}\nTo: ${to}\n\n`;
+        });
 
-          const txJson = await txRes.json();
-          const tx = txJson.result;
-
-          if (!tx) continue;
-
-          const time = new Date(tx.blockTime * 1000).toLocaleString();
-          const txid = sig.signature;
-          const txlink = `https://solscan.io/tx/${txid}`;
-          let from = "-", to = "-", amount = "-";
-
-          const instructions = tx.transaction.message.instructions;
-          for (const ix of instructions) {
-            if (ix.parsed?.type === "transfer" && ix.program === "spl-token") {
-              from = ix.parsed.info.source;
-              to = ix.parsed.info.destination;
-              amount = ix.parsed.info.amount;
-              break;
-            }
-          }
-
-          output += `
-            <div class="tx">
-              <p><strong>🧾 TxID:</strong> <a href="${txlink}" target="_blank">${txid.slice(0, 12)}...</a></p>
-              <p><strong>📤 From:</strong> ${from}</p>
-              <p><strong>📥 To:</strong> ${to}</p>
-              <p><strong>💰 Amount:</strong> ${amount}</p>
-              <p><strong>🕒 Time:</strong> ${time}</p>
-            </div>
-          `;
-        }
-
-        resultDiv.innerHTML = output;
+        resultDiv.textContent = output;
       } catch (err) {
+        resultDiv.textContent = `查询失败: ${err.message}`;
         console.error(err);
-        resultDiv.innerHTML = "<p style='color:red'>查询失败，请检查网络或 RPC。</p>";
       }
     }
   </script>
