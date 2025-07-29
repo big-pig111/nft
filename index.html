@@ -6,7 +6,7 @@
     <title>铭刻 NFT 到 Solana 链</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
-    <script src="https://unpkg.com/@metaplex-foundation/js@latest/dist/index.iife.js"></script>
+    <script src="https://unpkg.com/@metaplex-foundation/js@0.20.1/dist/index.iife.js"></script>
   </head>
   <body class="bg-gray-100">
     <div class="max-w-xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
@@ -23,17 +23,31 @@
       let wallet = null;
       const statusEl = document.getElementById('status');
 
-      // Wait for libraries to load
-      window.addEventListener('load', () => {
+      // 检查库是否加载完成
+      function checkLibraries() {
+        console.log('检查库加载状态:');
+        console.log('solanaWeb3:', typeof window.solanaWeb3);
+        console.log('metaplex:', typeof window.metaplex);
+        console.log('metaplexFoundationJs:', typeof window.metaplexFoundationJs);
+        
         if (typeof window.solanaWeb3 === 'undefined') {
           statusEl.textContent = '❌ Solana Web3 库加载失败';
-          return;
+          return false;
         }
-        if (typeof window.metaplex === 'undefined') {
+        
+        // 检查不同的可能变量名
+        if (typeof window.metaplex === 'undefined' && typeof window.metaplexFoundationJs === 'undefined') {
           statusEl.textContent = '❌ Metaplex 库加载失败';
-          return;
+          return false;
         }
+        
         statusEl.textContent = '✅ 库加载完成，可以开始使用';
+        return true;
+      }
+
+      // 等待页面加载完成后检查
+      window.addEventListener('load', () => {
+        setTimeout(checkLibraries, 1000); // 给库一点时间加载
       });
 
       document.getElementById('connectWallet').onclick = async () => {
@@ -69,26 +83,33 @@
         }
 
         try {
-          statusEl.textContent = '上传中...';
+          statusEl.textContent = '准备中...';
           
-          // Create connection
+          // 获取 Metaplex 实例
+          const metaplexLib = window.metaplex || window.metaplexFoundationJs;
+          if (!metaplexLib) {
+            throw new Error('Metaplex 库未加载');
+          }
+
+          // 创建连接
           const connection = new window.solanaWeb3.Connection(
             window.solanaWeb3.clusterApiUrl('devnet')
           );
 
-          // Create Metaplex instance
-          const metaplex = window.metaplex.Metaplex.make(connection)
-            .use(window.metaplex.walletAdapterIdentity(wallet))
-            .use(window.metaplex.bundlrStorage());
+          // 创建 Metaplex 实例
+          const metaplex = metaplexLib.Metaplex.make(connection)
+            .use(metaplexLib.walletAdapterIdentity(wallet))
+            .use(metaplexLib.bundlrStorage());
 
-          // Convert file to Metaplex file
-          const mpFile = await window.metaplex.toMetaplexFileFromBrowser(file);
+          // 转换文件为 Metaplex 文件
+          statusEl.textContent = '处理图片文件...';
+          const mpFile = await metaplexLib.toMetaplexFileFromBrowser(file);
           
-          // Upload image
+          // 上传图片
           statusEl.textContent = '上传图片中...';
           const imageUri = await metaplex.storage().upload(mpFile);
           
-          // Upload metadata
+          // 上传元数据
           statusEl.textContent = '上传元数据中...';
           const { uri } = await metaplex.nfts().uploadMetadata({
             name,
@@ -96,7 +117,7 @@
             image: imageUri
           });
           
-          // Create NFT
+          // 创建 NFT
           statusEl.textContent = '创建 NFT 中...';
           const { nft } = await metaplex.nfts().create({
             uri,
