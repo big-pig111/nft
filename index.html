@@ -1,413 +1,151 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Solana NFT 铸造</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  
-  <!-- Buffer Polyfill for browser -->
-  <script src="https://bundle.run/buffer@6.0.3"></script>
-  <script>
-    window.Buffer = buffer.Buffer;
-  </script>
-  
-  <!-- Solana Web3.js -->
-  <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
-  
-  <!-- Arweave -->
-  <script src="https://unpkg.com/arweave@1.14.0/bundles/web.bundle.min.js"></script>
-  
-  <script>
-    console.log("Solana Web3.js 加载成功");
-    console.log("Buffer 可用:", typeof window.Buffer !== 'undefined');
-    console.log("Arweave 可用:", typeof window.Arweave !== 'undefined');
-  </script>
+  <meta charset="UTF-8">
+  <title>Solana Token Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f2f2f2;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 0 12px rgba(0,0,0,0.1);
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #1e90ff;
+      border: none;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0074e4;
+    }
+    .tx {
+      padding: 1rem;
+      margin: 1rem 0;
+      background: #f9f9f9;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
+    .tx a {
+      color: #1e90ff;
+      text-decoration: none;
+    }
+    .tx a:hover {
+      text-decoration: underline;
+    }
+    .loading {
+      color: #888;
+    }
+  </style>
 </head>
-<body class="bg-gray-100">
-  <div class="max-w-xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
-    <h1 class="text-2xl font-bold mb-4">Solana + Arweave 双重上链</h1>
-    <p class="text-sm text-gray-600 mb-4">将您的照片和文字永久铭刻在 Solana 区块链和 Arweave 去中心化存储上</p>
-    <button id="connectWallet" class="bg-blue-600 text-white px-4 py-2 rounded mb-4">连接钱包</button>
-    <button id="checkLibraries" class="bg-green-600 text-white px-4 py-2 rounded mb-4 ml-2">检查库状态</button>
-    <button id="viewNFTs" class="bg-orange-600 text-white px-4 py-2 rounded mb-4 ml-2">查看我的 NFT</button>
-    <button id="verifyOnChain" class="bg-red-600 text-white px-4 py-2 rounded mb-4 ml-2">链上验证</button>
-    <input id="nftName" type="text" placeholder="输入名称" class="border p-2 w-full mb-2" />
-    <textarea id="nftDesc" placeholder="输入描述" class="border p-2 w-full mb-2"></textarea>
-    <input id="imageUpload" type="file" accept="image/*" class="mb-4" />
-    <button id="mintButton" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">双重上链</button>
-    <p class="text-xs text-gray-500 mt-2">注意：双重上链需要支付 Solana 网络费用（约 0.00001 SOL）+ Arweave 存储费用（免费）</p>
-    <p id="status" class="mt-4 text-sm text-gray-600 whitespace-pre-wrap"></p>
+<body>
+  <div class="container">
+    <h2>🔍 查询 Solana Token Mint 交易记录</h2>
+    <input id="mintInput" placeholder="输入 token mint 地址">
+    <button onclick="queryTransactions()">查询</button>
+    <div id="result" class="loading"></div>
   </div>
 
   <script>
-    const TOKEN_METADATA_PROGRAM_ID = new solanaWeb3.PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
-    let provider = null;
+    const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=17d82c3f-fbe0-451c-a882-70de20ad4162";
 
-    document.getElementById("connectWallet").onclick = async () => {
-      if ("solana" in window) {
-        provider = window.solana;
-        await provider.connect();
-        document.getElementById("connectWallet").innerText = "✅ 已连接钱包";
-      } else {
-        alert("请安装 Phantom 钱包");
-      }
-    };
+    async function queryTransactions() {
+      const mint = document.getElementById("mintInput").value.trim();
+      const resultDiv = document.getElementById("result");
+      resultDiv.innerHTML = "<p class='loading'>正在查询，请稍候...</p>";
 
-    document.getElementById("checkLibraries").onclick = () => {
-      const status = document.getElementById("status");
-      const libraries = {
-        "Solana Web3.js": typeof solanaWeb3 !== 'undefined',
-        "Buffer": typeof window.Buffer !== 'undefined',
-        "Arweave": typeof window.Arweave !== 'undefined'
-      };
-      
-      let statusText = "📊 库状态检查：\n\n";
-      Object.entries(libraries).forEach(([name, loaded]) => {
-        statusText += `${loaded ? '✅' : '❌'} ${name}: ${loaded ? '已加载' : '未加载'}\n`;
-      });
-      
-      statusText += "\n💡 使用 Arweave + Solana 双重上链";
-      
-      status.textContent = statusText;
-    };
-
-    document.getElementById("viewNFTs").onclick = () => {
-      const status = document.getElementById("status");
-      
-      // 获取所有保存的 NFT
-      const nfts = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('nft_')) {
-          try {
-            const nftData = JSON.parse(localStorage.getItem(key));
-            nfts.push({ key, ...nftData });
-          } catch (e) {
-            console.error('解析 NFT 数据失败:', e);
-          }
-        }
-      }
-      
-      if (nfts.length === 0) {
-        status.textContent = "📭 还没有创建任何 NFT";
-        return;
-      }
-      
-      // 按创建时间排序
-      nfts.sort((a, b) => new Date(b.created) - new Date(a.created));
-      
-      let statusText = `📚 找到 ${nfts.length} 个 NFT：\n\n`;
-      
-      nfts.forEach((nft, index) => {
-        statusText += `🎨 NFT ${index + 1}：\n`;
-        statusText += `📝 名称：${nft.name}\n`;
-        statusText += `📄 描述：${nft.description}\n`;
-        statusText += `👛 钱包：${nft.walletAddress}\n`;
-        statusText += `📊 交易：${nft.transactionHash}\n`;
-        statusText += `🌐 查看：${nft.solanaExplorer}\n`;
-        statusText += `📅 创建：${new Date(nft.created).toLocaleString()}\n`;
-        statusText += `🖼️ 图片：已保存（Base64格式）\n\n`;
-        
-        // 创建查看图片的链接
-        const imageKey = `image_${nft.key}`;
-        if (!localStorage.getItem(imageKey)) {
-          localStorage.setItem(imageKey, nft.image);
-        }
-      });
-      
-      statusText += `💡 提示：\n`;
-      statusText += `• 图片数据已保存在浏览器本地存储中\n`;
-      statusText += `• 可以在开发者工具中查看完整数据\n`;
-      statusText += `• 交易哈希可以永久验证数据存在\n\n`;
-      statusText += `🖼️ 查看图片：\n`;
-      
-      nfts.forEach((nft, index) => {
-        const imageKey = `image_${nft.key}`;
-        const imageData = localStorage.getItem(imageKey) || nft.image;
-        if (imageData) {
-          statusText += `• NFT ${index + 1} 图片：`;
-          statusText += `<a href="${imageData}" target="_blank" style="color: blue; text-decoration: underline;">点击查看</a>\n`;
-        }
-      });
-      
-      status.textContent = statusText;
-    };
-
-    // 辅助函数：文件转 Base64
-    async function fileToBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-      });
-    }
-    
-    document.getElementById("mintButton").onclick = async () => {
-      const status = document.getElementById("status");
-      const name = document.getElementById("nftName").value;
-      const desc = document.getElementById("nftDesc").value;
-      const file = document.getElementById("imageUpload").files[0];
-
-      if (!provider || !provider.publicKey) {
-        status.textContent = "❌ 请先连接钱包";
-        return;
-      }
-      if (!name || !desc || !file) {
-        status.textContent = "❌ 请填写完整的 NFT 信息（名称、描述、图片）";
+      if (!mint || mint.length < 32) {
+        resultDiv.innerHTML = "<p style='color:red'>请输入有效的 token mint 地址。</p>";
         return;
       }
 
-      // 检查 Buffer 是否可用
-      if (typeof window.Buffer === 'undefined') {
-        status.textContent = "❌ Buffer 未定义，请刷新页面重试";
-        return;
-      }
-
-      status.textContent = "📦 正在创建 NFT...";
       try {
-        const connection = new solanaWeb3.Connection(
-          "https://small-holy-forest.solana-mainnet.quiknode.pro/b59315ea187b3de1b3542c5c25d7f2d5b5410ff4/",
-          "confirmed"
-        );
+        const sigsRes = await fetch(RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "getSignaturesForAddress",
+            params: [mint, { limit: 20 }]
+          })
+        });
 
-        // 使用最简单的方法创建 NFT
-        await createSimpleNFT(connection, provider, name, desc, file, status);
-      } catch (err) {
-        console.error(err);
-        status.textContent = "❌ 出错了: " + err.message;
-      }
-    };
-    
-    // 最简单的 NFT 创建方法
-    async function createSimpleNFT(connection, provider, name, desc, file, status) {
-      try {
-        status.textContent = "🔄 正在处理图片和文字...";
-        
-        // 检查 Arweave 是否可用
-        if (typeof window.Arweave === 'undefined') {
-          throw new Error("Arweave 库未加载，请刷新页面重试");
-        }
-        
-        // 初始化 Arweave
-        const arweave = window.Arweave.init({
-          host: 'arweave.net',
-          port: 443,
-          protocol: 'https'
-        });
-        
-        // 将图片转换为 ArrayBuffer
-        const imageBuffer = await file.arrayBuffer();
-        
-        // 第一步：上传图片到 Arweave
-        status.textContent = "📤 步骤 1/3: 正在上传图片到 Arweave...";
-        
-        const imageTransaction = await arweave.createTransaction({
-          data: new Uint8Array(imageBuffer)
-        });
-        
-        imageTransaction.addTag('Content-Type', file.type);
-        imageTransaction.addTag('Title', `${name} - Image`);
-        imageTransaction.addTag('Description', desc);
-        imageTransaction.addTag('Creator', provider.publicKey.toString());
-        imageTransaction.addTag('Type', 'NFT-Image');
-        
-        await arweave.transactions.sign(imageTransaction);
-        const imageUploadResponse = await arweave.transactions.post(imageTransaction);
-        
-        if (imageUploadResponse.status !== 200 && imageUploadResponse.status !== 202) {
-          throw new Error("图片上传到 Arweave 失败");
-        }
-        
-        const imageArweaveId = imageTransaction.id;
-        console.log("图片上传成功，Arweave ID:", imageArweaveId);
-        
-        // 第二步：创建并上传元数据到 Arweave
-        status.textContent = "📝 步骤 2/3: 正在上传元数据到 Arweave...";
-        
-        const metadata = {
-          name: name,
-          description: desc,
-          image: `https://arweave.net/${imageArweaveId}`,
-          creator: provider.publicKey.toString(),
-          created: new Date().toISOString(),
-          type: "NFT",
-          blockchain: "Solana",
-          arweaveImageId: imageArweaveId
-        };
-        
-        const metadataTransaction = await arweave.createTransaction({
-          data: JSON.stringify(metadata, null, 2)
-        });
-        
-        metadataTransaction.addTag('Content-Type', 'application/json');
-        metadataTransaction.addTag('Title', `${name} - Metadata`);
-        metadataTransaction.addTag('Description', desc);
-        metadataTransaction.addTag('Creator', provider.publicKey.toString());
-        metadataTransaction.addTag('Type', 'NFT-Metadata');
-        metadataTransaction.addTag('Image-Id', imageArweaveId);
-        
-        await arweave.transactions.sign(metadataTransaction);
-        const metadataUploadResponse = await arweave.transactions.post(metadataTransaction);
-        
-        if (metadataUploadResponse.status !== 200 && metadataUploadResponse.status !== 202) {
-          throw new Error("元数据上传到 Arweave 失败");
-        }
-        
-        const metadataArweaveId = metadataTransaction.id;
-        console.log("元数据上传成功，Arweave ID:", metadataArweaveId);
-        
-        // 第三步：在 Solana 上创建包含 Arweave 链接的交易
-        status.textContent = "🔗 步骤 3/3: 正在将链接铭刻到 Solana 区块链...";
-        
-        const transaction = new solanaWeb3.Transaction();
-        
-        // 添加包含 Arweave 链接的备忘录指令
-        const memoData = Buffer.from(`NFT: ${name} - ${desc} | Image: https://arweave.net/${imageArweaveId} | Metadata: https://arweave.net/${metadataArweaveId}`, 'utf8');
-        const memoInstruction = new solanaWeb3.TransactionInstruction({
-          keys: [
-            { pubkey: provider.publicKey, isSigner: true, isWritable: false }
-          ],
-          programId: new solanaWeb3.PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
-          data: memoData
-        });
-        
-        transaction.add(memoInstruction);
-        
-        // 添加转账指令
-        const transferInstruction = solanaWeb3.SystemProgram.transfer({
-          fromPubkey: provider.publicKey,
-          toPubkey: provider.publicKey,
-          lamports: 1000,
-        });
-        
-        transaction.add(transferInstruction);
-        
-        // 设置交易参数
-        transaction.feePayer = provider.publicKey;
-        const { blockhash } = await connection.getLatestBlockhash();
-        transaction.recentBlockhash = blockhash;
-        
-        // 签名并发送交易
-        const signedTx = await provider.signTransaction(transaction);
-        const txid = await connection.sendRawTransaction(signedTx.serialize());
-        await connection.confirmTransaction(txid);
-        
-        // 创建完整的 NFT 信息
-        const nftInfo = {
-          ...metadata,
-          transactionHash: txid,
-          solanaExplorer: `https://explorer.solana.com/tx/${txid}`,
-          walletAddress: provider.publicKey.toString(),
-          arweaveImageUrl: `https://arweave.net/${imageArweaveId}`,
-          arweaveMetadataUrl: `https://arweave.net/${metadataArweaveId}`
-        };
-        
-        // 将完整的 NFT 信息保存到本地存储
-        const nftKey = `nft_${Date.now()}`;
-        localStorage.setItem(nftKey, JSON.stringify(nftInfo));
-        
-        status.textContent = `✅ NFT 双重上链成功！\n\n🎨 NFT 名称：${name}\n📝 描述：${desc}\n👛 钱包地址：${provider.publicKey.toString()}\n📊 Solana 交易：${txid}\n\n🖼️ 图片链接：https://arweave.net/${imageArweaveId}\n📄 元数据链接：https://arweave.net/${metadataArweaveId}\n\n🌐 查看 Solana 交易：https://explorer.solana.com/tx/${txid}\n💾 数据已保存到本地存储\n\n您的图片和文字已完全上链！`;
-        
-        console.log("NFT 双重上链成功:", nftInfo);
-        
-      } catch (err) {
-        console.error(err);
-        status.textContent = "❌ 出错了: " + err.message;
-      }
-    }
+        const sigsJson = await sigsRes.json();
+        const signatures = sigsJson.result;
 
-    document.getElementById("verifyOnChain").onclick = async () => {
-      const status = document.getElementById("status");
-      
-      if (!provider || !provider.publicKey) {
-        status.textContent = "❌ 请先连接钱包";
-        return;
-      }
-      
-      status.textContent = "🔍 正在验证链上数据...";
-      
-      try {
-        const connection = new solanaWeb3.Connection(
-          "https://small-holy-forest.solana-mainnet.quiknode.pro/b59315ea187b3de1b3542c5c25d7f2d5b5410ff4/",
-          "confirmed"
-        );
-        
-        // 获取钱包的所有交易
-        const signatures = await connection.getSignaturesForAddress(
-          provider.publicKey,
-          { limit: 20 }
-        );
-        
-        let verifiedNFTs = [];
-        
-        for (const sig of signatures) {
-          try {
-            const transaction = await connection.getTransaction(sig.signature, {
-              maxSupportedTransactionVersion: 0
-            });
-            
-            if (transaction && transaction.meta) {
-              // 检查是否包含备忘录指令
-              const memoInstructions = transaction.transaction.message.instructions.filter(
-                inst => inst.programId.toString() === "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-              );
-              
-              if (memoInstructions.length > 0) {
-                // 解码备忘录数据
-                const memoData = transaction.transaction.message.instructions.find(
-                  inst => inst.programId.toString() === "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-                );
-                
-                if (memoData && memoData.data) {
-                  const memoText = Buffer.from(memoData.data, 'base64').toString('utf8');
-                  if (memoText.startsWith('NFT:')) {
-                    verifiedNFTs.push({
-                      signature: sig.signature,
-                      memo: memoText,
-                      blockTime: sig.blockTime,
-                      slot: sig.slot
-                    });
-                  }
-                }
-              }
-            }
-          } catch (err) {
-            console.log("跳过交易:", sig.signature, err.message);
-          }
-        }
-        
-        if (verifiedNFTs.length === 0) {
-          status.textContent = "📭 在链上未找到 NFT 数据\n\n请确保：\n• 已经成功创建了 NFT\n• 使用的是同一个钱包地址";
+        if (!signatures || signatures.length === 0) {
+          resultDiv.innerHTML = "<p>没有查询到交易记录。</p>";
           return;
         }
-        
-        let statusText = `✅ 在链上找到 ${verifiedNFTs.length} 个 NFT：\n\n`;
-        
-        verifiedNFTs.forEach((nft, index) => {
-          const date = new Date(nft.blockTime * 1000).toLocaleString();
-          statusText += `🎨 NFT ${index + 1}：\n`;
-          statusText += `📝 数据：${nft.memo}\n`;
-          statusText += `📊 交易：${nft.signature}\n`;
-          statusText += `🌐 查看：https://explorer.solana.com/tx/${nft.signature}\n`;
-          statusText += `📅 时间：${date}\n`;
-          statusText += `🔢 区块：${nft.slot}\n\n`;
-        });
-        
-        statusText += `💡 验证结果：\n`;
-        statusText += `• ✅ 所有 NFT 数据都永久保存在 Solana 区块链上\n`;
-        statusText += `• ✅ 任何人都可以通过交易哈希验证数据存在\n`;
-        statusText += `• ✅ 数据不可篡改，永久有效\n`;
-        statusText += `• 🔗 点击上面的链接可以在 Solana 浏览器中查看`;
-        
-        status.textContent = statusText;
-        
+
+        let output = "";
+
+        for (const sig of signatures) {
+          const txRes = await fetch(RPC_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "getParsedTransaction",
+              params: [sig.signature, { maxSupportedTransactionVersion: 0 }]
+            })
+          });
+
+          const txJson = await txRes.json();
+          const tx = txJson.result;
+
+          if (!tx) continue;
+
+          const time = new Date(tx.blockTime * 1000).toLocaleString();
+          const txid = sig.signature;
+          const txlink = `https://solscan.io/tx/${txid}`;
+          let from = "-", to = "-", amount = "-";
+
+          const instructions = tx.transaction.message.instructions;
+          for (const ix of instructions) {
+            if (ix.parsed?.type === "transfer" && ix.program === "spl-token") {
+              from = ix.parsed.info.source;
+              to = ix.parsed.info.destination;
+              amount = ix.parsed.info.amount;
+              break;
+            }
+          }
+
+          output += `
+            <div class="tx">
+              <p><strong>🧾 TxID:</strong> <a href="${txlink}" target="_blank">${txid.slice(0, 12)}...</a></p>
+              <p><strong>📤 From:</strong> ${from}</p>
+              <p><strong>📥 To:</strong> ${to}</p>
+              <p><strong>💰 Amount:</strong> ${amount}</p>
+              <p><strong>🕒 Time:</strong> ${time}</p>
+            </div>
+          `;
+        }
+
+        resultDiv.innerHTML = output;
       } catch (err) {
         console.error(err);
-        status.textContent = "❌ 验证失败: " + err.message;
+        resultDiv.innerHTML = "<p style='color:red'>查询失败，请检查网络或 RPC。</p>";
       }
-    };
+    }
   </script>
 </body>
 </html>
