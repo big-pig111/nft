@@ -15,19 +15,25 @@
   <!-- Solana Web3.js -->
   <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
   
+  <!-- Metaplex -->
+  <script src="https://unpkg.com/@metaplex-foundation/js@4.12.0/lib/index.iife.min.js"></script>
+  
   <script>
     console.log("Solana Web3.js 加载成功");
     console.log("Buffer 可用:", typeof window.Buffer !== 'undefined');
+    console.log("Metaplex 可用:", typeof window.mpl !== 'undefined');
   </script>
 </head>
 <body class="bg-gray-100">
   <div class="max-w-xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
-    <h1 class="text-2xl font-bold mb-4">Solana 交易演示</h1>
+    <h1 class="text-2xl font-bold mb-4">Solana NFT 铸造</h1>
+    <p class="text-sm text-gray-600 mb-4">将您的照片和文字铭刻在 Solana 主网上，创建真正的 NFT</p>
     <button id="connectWallet" class="bg-blue-600 text-white px-4 py-2 rounded mb-4">连接钱包</button>
-    <input id="nftName" type="text" placeholder="输入名称（可选）" class="border p-2 w-full mb-2" />
-    <textarea id="nftDesc" placeholder="输入描述（可选）" class="border p-2 w-full mb-2"></textarea>
+    <input id="nftName" type="text" placeholder="输入 NFT 名称" class="border p-2 w-full mb-2" />
+    <textarea id="nftDesc" placeholder="输入 NFT 描述" class="border p-2 w-full mb-2"></textarea>
     <input id="imageUpload" type="file" accept="image/*" class="mb-4" />
-    <button id="mintButton" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">执行演示交易</button>
+    <button id="mintButton" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">铸造 NFT</button>
+    <p class="text-xs text-gray-500 mt-2">注意：铸造 NFT 需要支付 Solana 网络费用（约 0.01-0.05 SOL）</p>
     <p id="status" class="mt-4 text-sm text-gray-600 whitespace-pre-wrap"></p>
   </div>
 
@@ -45,18 +51,6 @@
       }
     };
 
-    async function uploadImageMock(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = btoa(reader.result);
-          resolve("data:image;base64," + base64.slice(0, 100) + "..."); // 模拟数据 URI
-        };
-        reader.onerror = reject;
-        reader.readAsBinaryString(file);
-      });
-    }
-
     document.getElementById("mintButton").onclick = async () => {
       const status = document.getElementById("status");
       const name = document.getElementById("nftName").value;
@@ -67,8 +61,8 @@
         status.textContent = "❌ 请先连接钱包";
         return;
       }
-      if (!name) {
-        status.textContent = "❌ 请输入名称";
+      if (!name || !desc || !file) {
+        status.textContent = "❌ 请填写完整的 NFT 信息（名称、描述、图片）";
         return;
       }
 
@@ -78,36 +72,52 @@
         return;
       }
 
-      status.textContent = "📦 正在模拟上传图片...";
+      status.textContent = "📦 正在上传图片到 Arweave...";
       try {
-        const imageUri = await uploadImageMock(file);
+        // 检查 Metaplex 是否可用
+        if (typeof window.mpl === 'undefined') {
+          throw new Error("Metaplex 库未加载，请刷新页面重试");
+        }
 
         const connection = new solanaWeb3.Connection(
           "https://small-holy-forest.solana-mainnet.quiknode.pro/b59315ea187b3de1b3542c5c25d7f2d5b5410ff4/",
           "confirmed"
         );
 
-        // 创建一个简单的交易来演示
-        const transaction = new solanaWeb3.Transaction();
-        
-        // 添加一个简单的转账指令作为示例
-        transaction.add(
-          solanaWeb3.SystemProgram.transfer({
-            fromPubkey: provider.publicKey,
-            toPubkey: provider.publicKey, // 转给自己作为演示
-            lamports: 1000, // 很小的金额
-          })
-        );
+        // 创建 Metaplex 实例
+        const metaplex = new window.mpl.Metaplex(connection);
+        metaplex.use(window.mpl.keypairIdentity(solanaWeb3.Keypair.generate()));
 
-        transaction.feePayer = provider.publicKey;
-        const { blockhash } = await connection.getLatestBlockhash();
-        transaction.recentBlockhash = blockhash;
+        // 上传图片到 Arweave
+        status.textContent = "📤 正在上传图片...";
+        const imageBuffer = await file.arrayBuffer();
+        const imageUri = await metaplex.storage().upload(new Uint8Array(imageBuffer));
 
-        const signedTx = await provider.signTransaction(transaction);
-        const txid = await connection.sendRawTransaction(signedTx.serialize());
-        await connection.confirmTransaction(txid);
+        // 创建 NFT 元数据
+        status.textContent = "📝 正在创建 NFT 元数据...";
+        const { uri: metadataUri } = await metaplex.nfts().uploadMetadata({
+          name: name,
+          description: desc,
+          image: imageUri,
+          attributes: [
+            { trait_type: "Creator", value: "Solana NFT Minting Tool" },
+            { trait_type: "Created", value: new Date().toISOString() }
+          ]
+        });
 
-        status.textContent = `✅ 交易成功！\n交易哈希：${txid}\n查看：https://explorer.solana.com/tx/${txid}\n\n注意：这是一个演示交易，不是真正的 NFT 铸造。`;
+        // 铸造 NFT
+        status.textContent = "🪙 正在铸造 NFT...";
+        const { nft } = await metaplex.nfts().create({
+          uri: metadataUri,
+          name: name,
+          sellerFeeBasisPoints: 500, // 5% 版税
+          maxSupply: 1,
+          isMutable: true,
+          mintAddress: solanaWeb3.Keypair.generate(),
+          tokenOwner: provider.publicKey,
+        });
+
+        status.textContent = `✅ NFT 铸造成功！\n\nNFT 地址：${nft.address.toString()}\n元数据：${metadataUri}\n图片：${imageUri}\n\n查看 NFT：https://explorer.solana.com/address/${nft.address.toString()}`;
       } catch (err) {
         console.error(err);
         status.textContent = "❌ 出错了: " + err.message;
