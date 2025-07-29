@@ -16,12 +16,34 @@
   <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
   
   <!-- Metaplex -->
-  <script src="https://unpkg.com/@metaplex-foundation/js@4.12.0/lib/index.iife.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@metaplex-foundation/js@4.12.0/lib/index.iife.min.js"></script>
   
   <script>
     console.log("Solana Web3.js 加载成功");
     console.log("Buffer 可用:", typeof window.Buffer !== 'undefined');
-    console.log("Metaplex 可用:", typeof window.mpl !== 'undefined');
+    
+    // 等待页面加载完成后检查 Metaplex
+    window.addEventListener('load', function() {
+      if (window.mpl) {
+        console.log("Metaplex 库加载成功");
+        window.metaplex = window.mpl;
+      } else if (window.Metaplex) {
+        console.log("Metaplex 库加载成功 (备用方式)");
+        window.metaplex = window.Metaplex;
+      } else {
+        console.error("Metaplex 库加载失败");
+        // 尝试动态加载
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/@metaplex-foundation/js@4.12.0/lib/index.iife.min.js';
+        script.onload = function() {
+          if (window.mpl) {
+            window.metaplex = window.mpl;
+            console.log("Metaplex 库动态加载成功");
+          }
+        };
+        document.head.appendChild(script);
+      }
+    });
   </script>
 </head>
 <body class="bg-gray-100">
@@ -29,6 +51,7 @@
     <h1 class="text-2xl font-bold mb-4">Solana NFT 铸造</h1>
     <p class="text-sm text-gray-600 mb-4">将您的照片和文字铭刻在 Solana 主网上，创建真正的 NFT</p>
     <button id="connectWallet" class="bg-blue-600 text-white px-4 py-2 rounded mb-4">连接钱包</button>
+    <button id="checkLibraries" class="bg-green-600 text-white px-4 py-2 rounded mb-4 ml-2">检查库状态</button>
     <input id="nftName" type="text" placeholder="输入 NFT 名称" class="border p-2 w-full mb-2" />
     <textarea id="nftDesc" placeholder="输入 NFT 描述" class="border p-2 w-full mb-2"></textarea>
     <input id="imageUpload" type="file" accept="image/*" class="mb-4" />
@@ -49,6 +72,26 @@
       } else {
         alert("请安装 Phantom 钱包");
       }
+    };
+
+    document.getElementById("checkLibraries").onclick = () => {
+      const status = document.getElementById("status");
+      const libraries = {
+        "Solana Web3.js": typeof solanaWeb3 !== 'undefined',
+        "Buffer": typeof window.Buffer !== 'undefined',
+        "Metaplex": typeof window.metaplex !== 'undefined'
+      };
+      
+      let statusText = "📊 库状态检查：\n\n";
+      Object.entries(libraries).forEach(([name, loaded]) => {
+        statusText += `${loaded ? '✅' : '❌'} ${name}: ${loaded ? '已加载' : '未加载'}\n`;
+      });
+      
+      if (!libraries["Metaplex"]) {
+        statusText += "\n💡 如果 Metaplex 未加载，请：\n1. 刷新页面\n2. 检查网络连接\n3. 等待几秒后重试";
+      }
+      
+      status.textContent = statusText;
     };
 
     document.getElementById("mintButton").onclick = async () => {
@@ -75,8 +118,9 @@
       status.textContent = "📦 正在上传图片到 Arweave...";
       try {
         // 检查 Metaplex 是否可用
-        if (typeof window.mpl === 'undefined') {
-          throw new Error("Metaplex 库未加载，请刷新页面重试");
+        if (typeof window.metaplex === 'undefined') {
+          status.textContent = "❌ Metaplex 库未加载\n\n请尝试：\n1. 刷新页面\n2. 检查网络连接\n3. 等待几秒后重试";
+          return;
         }
 
         const connection = new solanaWeb3.Connection(
@@ -85,8 +129,8 @@
         );
 
         // 创建 Metaplex 实例
-        const metaplex = new window.mpl.Metaplex(connection);
-        metaplex.use(window.mpl.keypairIdentity(solanaWeb3.Keypair.generate()));
+        const metaplex = new window.metaplex.Metaplex(connection);
+        metaplex.use(window.metaplex.keypairIdentity(solanaWeb3.Keypair.generate()));
 
         // 上传图片到 Arweave
         status.textContent = "📤 正在上传图片...";
