@@ -27,6 +27,7 @@
     <button id="connectWallet" class="bg-blue-600 text-white px-4 py-2 rounded mb-4">连接钱包</button>
     <button id="checkLibraries" class="bg-green-600 text-white px-4 py-2 rounded mb-4 ml-2">检查库状态</button>
     <button id="viewNFTs" class="bg-orange-600 text-white px-4 py-2 rounded mb-4 ml-2">查看我的 NFT</button>
+    <button id="verifyOnChain" class="bg-red-600 text-white px-4 py-2 rounded mb-4 ml-2">链上验证</button>
     <input id="nftName" type="text" placeholder="输入名称" class="border p-2 w-full mb-2" />
     <textarea id="nftDesc" placeholder="输入描述" class="border p-2 w-full mb-2"></textarea>
     <input id="imageUpload" type="file" accept="image/*" class="mb-4" />
@@ -253,6 +254,97 @@
         status.textContent = "❌ 出错了: " + err.message;
       }
     }
+
+    document.getElementById("verifyOnChain").onclick = async () => {
+      const status = document.getElementById("status");
+      
+      if (!provider || !provider.publicKey) {
+        status.textContent = "❌ 请先连接钱包";
+        return;
+      }
+      
+      status.textContent = "🔍 正在验证链上数据...";
+      
+      try {
+        const connection = new solanaWeb3.Connection(
+          "https://small-holy-forest.solana-mainnet.quiknode.pro/b59315ea187b3de1b3542c5c25d7f2d5b5410ff4/",
+          "confirmed"
+        );
+        
+        // 获取钱包的所有交易
+        const signatures = await connection.getSignaturesForAddress(
+          provider.publicKey,
+          { limit: 20 }
+        );
+        
+        let verifiedNFTs = [];
+        
+        for (const sig of signatures) {
+          try {
+            const transaction = await connection.getTransaction(sig.signature, {
+              maxSupportedTransactionVersion: 0
+            });
+            
+            if (transaction && transaction.meta) {
+              // 检查是否包含备忘录指令
+              const memoInstructions = transaction.transaction.message.instructions.filter(
+                inst => inst.programId.toString() === "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+              );
+              
+              if (memoInstructions.length > 0) {
+                // 解码备忘录数据
+                const memoData = transaction.transaction.message.instructions.find(
+                  inst => inst.programId.toString() === "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+                );
+                
+                if (memoData && memoData.data) {
+                  const memoText = Buffer.from(memoData.data, 'base64').toString('utf8');
+                  if (memoText.startsWith('NFT:')) {
+                    verifiedNFTs.push({
+                      signature: sig.signature,
+                      memo: memoText,
+                      blockTime: sig.blockTime,
+                      slot: sig.slot
+                    });
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.log("跳过交易:", sig.signature, err.message);
+          }
+        }
+        
+        if (verifiedNFTs.length === 0) {
+          status.textContent = "📭 在链上未找到 NFT 数据\n\n请确保：\n• 已经成功创建了 NFT\n• 使用的是同一个钱包地址";
+          return;
+        }
+        
+        let statusText = `✅ 在链上找到 ${verifiedNFTs.length} 个 NFT：\n\n`;
+        
+        verifiedNFTs.forEach((nft, index) => {
+          const date = new Date(nft.blockTime * 1000).toLocaleString();
+          statusText += `🎨 NFT ${index + 1}：\n`;
+          statusText += `📝 数据：${nft.memo}\n`;
+          statusText += `📊 交易：${nft.signature}\n`;
+          statusText += `🌐 查看：https://explorer.solana.com/tx/${nft.signature}\n`;
+          statusText += `📅 时间：${date}\n`;
+          statusText += `🔢 区块：${nft.slot}\n\n`;
+        });
+        
+        statusText += `💡 验证结果：\n`;
+        statusText += `• ✅ 所有 NFT 数据都永久保存在 Solana 区块链上\n`;
+        statusText += `• ✅ 任何人都可以通过交易哈希验证数据存在\n`;
+        statusText += `• ✅ 数据不可篡改，永久有效\n`;
+        statusText += `• 🔗 点击上面的链接可以在 Solana 浏览器中查看`;
+        
+        status.textContent = statusText;
+        
+      } catch (err) {
+        console.error(err);
+        status.textContent = "❌ 验证失败: " + err.message;
+      }
+    };
   </script>
 </body>
 </html>
