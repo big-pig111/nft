@@ -15,15 +15,19 @@
   <!-- Solana Web3.js -->
   <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
   
+  <!-- Arweave -->
+  <script src="https://unpkg.com/arweave@1.14.0/bundles/web.bundle.min.js"></script>
+  
   <script>
     console.log("Solana Web3.js 加载成功");
     console.log("Buffer 可用:", typeof window.Buffer !== 'undefined');
+    console.log("Arweave 可用:", typeof window.Arweave !== 'undefined');
   </script>
 </head>
 <body class="bg-gray-100">
   <div class="max-w-xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
-    <h1 class="text-2xl font-bold mb-4">Solana 数据铭刻</h1>
-    <p class="text-sm text-gray-600 mb-4">将您的照片和文字永久铭刻在 Solana 主网上</p>
+    <h1 class="text-2xl font-bold mb-4">Solana + Arweave 双重上链</h1>
+    <p class="text-sm text-gray-600 mb-4">将您的照片和文字永久铭刻在 Solana 区块链和 Arweave 去中心化存储上</p>
     <button id="connectWallet" class="bg-blue-600 text-white px-4 py-2 rounded mb-4">连接钱包</button>
     <button id="checkLibraries" class="bg-green-600 text-white px-4 py-2 rounded mb-4 ml-2">检查库状态</button>
     <button id="viewNFTs" class="bg-orange-600 text-white px-4 py-2 rounded mb-4 ml-2">查看我的 NFT</button>
@@ -31,8 +35,8 @@
     <input id="nftName" type="text" placeholder="输入名称" class="border p-2 w-full mb-2" />
     <textarea id="nftDesc" placeholder="输入描述" class="border p-2 w-full mb-2"></textarea>
     <input id="imageUpload" type="file" accept="image/*" class="mb-4" />
-    <button id="mintButton" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">铭刻到区块链</button>
-    <p class="text-xs text-gray-500 mt-2">注意：铭刻数据需要支付 Solana 网络费用（约 0.00001 SOL）</p>
+    <button id="mintButton" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">双重上链</button>
+    <p class="text-xs text-gray-500 mt-2">注意：双重上链需要支付 Solana 网络费用（约 0.00001 SOL）+ Arweave 存储费用（免费）</p>
     <p id="status" class="mt-4 text-sm text-gray-600 whitespace-pre-wrap"></p>
   </div>
 
@@ -54,7 +58,8 @@
       const status = document.getElementById("status");
       const libraries = {
         "Solana Web3.js": typeof solanaWeb3 !== 'undefined',
-        "Buffer": typeof window.Buffer !== 'undefined'
+        "Buffer": typeof window.Buffer !== 'undefined',
+        "Arweave": typeof window.Arweave !== 'undefined'
       };
       
       let statusText = "📊 库状态检查：\n\n";
@@ -62,7 +67,7 @@
         statusText += `${loaded ? '✅' : '❌'} ${name}: ${loaded ? '已加载' : '未加载'}\n`;
       });
       
-      statusText += "\n💡 使用基础 Solana 方法创建 NFT";
+      statusText += "\n💡 使用 Arweave + Solana 双重上链";
       
       status.textContent = statusText;
     };
@@ -180,30 +185,86 @@
       try {
         status.textContent = "🔄 正在处理图片和文字...";
         
-        // 将图片转换为 Base64
-        const imageBase64 = await fileToBase64(file);
+        // 检查 Arweave 是否可用
+        if (typeof window.Arweave === 'undefined') {
+          throw new Error("Arweave 库未加载，请刷新页面重试");
+        }
         
-        // 创建 NFT 元数据
-        const nftData = {
+        // 初始化 Arweave
+        const arweave = window.Arweave.init({
+          host: 'arweave.net',
+          port: 443,
+          protocol: 'https'
+        });
+        
+        // 将图片转换为 ArrayBuffer
+        const imageBuffer = await file.arrayBuffer();
+        
+        // 第一步：上传图片到 Arweave
+        status.textContent = "📤 步骤 1/3: 正在上传图片到 Arweave...";
+        
+        const imageTransaction = await arweave.createTransaction({
+          data: new Uint8Array(imageBuffer)
+        });
+        
+        imageTransaction.addTag('Content-Type', file.type);
+        imageTransaction.addTag('Title', `${name} - Image`);
+        imageTransaction.addTag('Description', desc);
+        imageTransaction.addTag('Creator', provider.publicKey.toString());
+        imageTransaction.addTag('Type', 'NFT-Image');
+        
+        await arweave.transactions.sign(imageTransaction);
+        const imageUploadResponse = await arweave.transactions.post(imageTransaction);
+        
+        if (imageUploadResponse.status !== 200 && imageUploadResponse.status !== 202) {
+          throw new Error("图片上传到 Arweave 失败");
+        }
+        
+        const imageArweaveId = imageTransaction.id;
+        console.log("图片上传成功，Arweave ID:", imageArweaveId);
+        
+        // 第二步：创建并上传元数据到 Arweave
+        status.textContent = "📝 步骤 2/3: 正在上传元数据到 Arweave...";
+        
+        const metadata = {
           name: name,
           description: desc,
-          image: imageBase64,
+          image: `https://arweave.net/${imageArweaveId}`,
           creator: provider.publicKey.toString(),
           created: new Date().toISOString(),
           type: "NFT",
-          blockchain: "Solana"
+          blockchain: "Solana",
+          arweaveImageId: imageArweaveId
         };
         
-        // 将元数据转换为 JSON 字符串
-        const metadataJson = JSON.stringify(nftData, null, 2);
+        const metadataTransaction = await arweave.createTransaction({
+          data: JSON.stringify(metadata, null, 2)
+        });
         
-        status.textContent = "📝 正在将数据铭刻到 Solana 区块链...";
+        metadataTransaction.addTag('Content-Type', 'application/json');
+        metadataTransaction.addTag('Title', `${name} - Metadata`);
+        metadataTransaction.addTag('Description', desc);
+        metadataTransaction.addTag('Creator', provider.publicKey.toString());
+        metadataTransaction.addTag('Type', 'NFT-Metadata');
+        metadataTransaction.addTag('Image-Id', imageArweaveId);
         
-        // 创建一个包含 NFT 数据的交易
+        await arweave.transactions.sign(metadataTransaction);
+        const metadataUploadResponse = await arweave.transactions.post(metadataTransaction);
+        
+        if (metadataUploadResponse.status !== 200 && metadataUploadResponse.status !== 202) {
+          throw new Error("元数据上传到 Arweave 失败");
+        }
+        
+        const metadataArweaveId = metadataTransaction.id;
+        console.log("元数据上传成功，Arweave ID:", metadataArweaveId);
+        
+        // 第三步：在 Solana 上创建包含 Arweave 链接的交易
+        status.textContent = "🔗 步骤 3/3: 正在将链接铭刻到 Solana 区块链...";
+        
         const transaction = new solanaWeb3.Transaction();
         
-        // 添加一个包含 NFT 数据的备忘录指令
-        const memoData = Buffer.from(`NFT: ${name} - ${desc}`, 'utf8');
+        // 添加包含 Arweave 链接的备忘录指令
+        const memoData = Buffer.from(`NFT: ${name} - ${desc} | Image: https://arweave.net/${imageArweaveId} | Metadata: https://arweave.net/${metadataArweaveId}`, 'utf8');
         const memoInstruction = new solanaWeb3.TransactionInstruction({
           keys: [
             { pubkey: provider.publicKey, isSigner: true, isWritable: false }
@@ -214,11 +275,11 @@
         
         transaction.add(memoInstruction);
         
-        // 添加一个转账指令（转给自己，包含 NFT 信息）
+        // 添加转账指令
         const transferInstruction = solanaWeb3.SystemProgram.transfer({
           fromPubkey: provider.publicKey,
           toPubkey: provider.publicKey,
-          lamports: 1000, // 很小的金额
+          lamports: 1000,
         });
         
         transaction.add(transferInstruction);
@@ -235,19 +296,21 @@
         
         // 创建完整的 NFT 信息
         const nftInfo = {
-          ...nftData,
+          ...metadata,
           transactionHash: txid,
           solanaExplorer: `https://explorer.solana.com/tx/${txid}`,
-          walletAddress: provider.publicKey.toString()
+          walletAddress: provider.publicKey.toString(),
+          arweaveImageUrl: `https://arweave.net/${imageArweaveId}`,
+          arweaveMetadataUrl: `https://arweave.net/${metadataArweaveId}`
         };
         
         // 将完整的 NFT 信息保存到本地存储
         const nftKey = `nft_${Date.now()}`;
         localStorage.setItem(nftKey, JSON.stringify(nftInfo));
         
-        status.textContent = `✅ NFT 创建成功！\n\n🎨 NFT 名称：${name}\n📝 描述：${desc}\n👛 钱包地址：${provider.publicKey.toString()}\n📊 交易哈希：${txid}\n\n🌐 查看交易：https://explorer.solana.com/tx/${txid}\n💾 数据已保存到本地存储\n\n您的文字和图片已成功铭刻在 Solana 区块链上！`;
+        status.textContent = `✅ NFT 双重上链成功！\n\n🎨 NFT 名称：${name}\n📝 描述：${desc}\n👛 钱包地址：${provider.publicKey.toString()}\n📊 Solana 交易：${txid}\n\n🖼️ 图片链接：https://arweave.net/${imageArweaveId}\n📄 元数据链接：https://arweave.net/${metadataArweaveId}\n\n🌐 查看 Solana 交易：https://explorer.solana.com/tx/${txid}\n💾 数据已保存到本地存储\n\n您的图片和文字已完全上链！`;
         
-        console.log("NFT 数据已保存到本地:", nftInfo);
+        console.log("NFT 双重上链成功:", nftInfo);
         
       } catch (err) {
         console.error(err);
