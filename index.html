@@ -1,140 +1,89 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>铭刻 NFT 到 Solana 链</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@metaplex-foundation/js@0.20.1/dist/index.iife.js"></script>
-  </head>
-  <body class="bg-gray-100">
-    <div class="max-w-xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
-      <h1 class="text-2xl font-bold mb-4">铭刻图片 + 文字到 Solana 链</h1>
-      <button id="connectWallet" class="bg-blue-600 text-white px-4 py-2 rounded mb-4">连接钱包</button>
-      <input id="nftName" type="text" placeholder="输入标题" class="border p-2 w-full mb-2" />
-      <textarea id="nftDesc" placeholder="输入描述/铭刻文字" class="border p-2 w-full mb-2"></textarea>
-      <input id="imageUpload" type="file" accept="image/*" class="mb-4" />
-      <button id="mintButton" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">铭刻 NFT</button>
-      <p id="status" class="mt-4 text-sm text-gray-600"></p>
-    </div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solana 铭刻 NFT</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
+</head>
+<body class="bg-gray-100">
+  <div class="max-w-xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
+    <h1 class="text-2xl font-bold mb-4">铭刻图片 + 文字到 Solana 链 (NFT)</h1>
+    <button id="connectWallet" class="bg-blue-600 text-white px-4 py-2 rounded mb-4">连接钱包</button>
+    <input id="nftName" type="text" placeholder="输入标题" class="border p-2 w-full mb-2" />
+    <textarea id="nftDesc" placeholder="输入描述/铭刻文字" class="border p-2 w-full mb-2"></textarea>
+    <input id="imageUpload" type="file" accept="image/*" class="mb-4" />
+    <button id="mintButton" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">铭刻 NFT</button>
+    <p id="status" class="mt-4 text-sm text-gray-600"></p>
+  </div>
 
-    <script>
-      let wallet = null;
+  <script>
+    let provider = null;
+
+    document.getElementById('connectWallet').onclick = async () => {
+      if ('solana' in window) {
+        provider = window.solana;
+        await provider.connect();
+        document.getElementById('connectWallet').innerText = '✅ 钱包已连接';
+      } else {
+        alert('请安装 Phantom 钱包');
+      }
+    };
+
+    async function uploadToArweaveMock(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          resolve('data:image;base64,' + btoa(reader.result));
+        };
+        reader.onerror = reject;
+        reader.readAsBinaryString(file);
+      });
+    }
+
+    document.getElementById('mintButton').onclick = async () => {
       const statusEl = document.getElementById('status');
+      if (!provider || !provider.publicKey) {
+        statusEl.textContent = '❌ 请先连接钱包';
+        return;
+      }
+      const name = document.getElementById('nftName').value;
+      const description = document.getElementById('nftDesc').value;
+      const file = document.getElementById('imageUpload').files[0];
 
-      // 检查库是否加载完成
-      function checkLibraries() {
-        console.log('检查库加载状态:');
-        console.log('solanaWeb3:', typeof window.solanaWeb3);
-        console.log('metaplex:', typeof window.metaplex);
-        console.log('metaplexFoundationJs:', typeof window.metaplexFoundationJs);
-        console.log('window 对象上的所有属性:', Object.keys(window).filter(key => key.includes('metaplex')));
-        
-        if (typeof window.solanaWeb3 === 'undefined') {
-          statusEl.textContent = '❌ Solana Web3 库加载失败';
-          return false;
-        }
-        
-        // 检查不同的可能变量名
-        const metaplexLib = window.metaplex || window.metaplexFoundationJs;
-        if (!metaplexLib) {
-          statusEl.textContent = '❌ Metaplex 库加载失败';
-          return false;
-        }
-        
-        statusEl.textContent = '✅ 库加载完成，可以开始使用';
-        return true;
+      if (!name || !file) {
+        statusEl.textContent = '❌ 请填写标题并上传图片';
+        return;
       }
 
-      // 等待页面加载完成后检查
-      window.addEventListener('load', () => {
-        setTimeout(checkLibraries, 2000); // 给库更多时间加载
-      });
+      statusEl.textContent = '正在上传图片并创建 NFT ...';
 
-      document.getElementById('connectWallet').onclick = async () => {
-        if ('solana' in window) {
-          try {
-            const provider = window.solana;
-            await provider.connect();
-            wallet = provider;
-            document.getElementById('connectWallet').innerText = '✅ 钱包已连接';
-            statusEl.textContent = `✅ 钱包地址: ${wallet.publicKey.toString()}`;
-          } catch (error) {
-            console.error('连接钱包失败:', error);
-            statusEl.textContent = '❌ 连接钱包失败';
-          }
-        } else {
-          alert('请安装 Phantom 钱包');
-        }
-      };
+      try {
+        const imageUri = await uploadToArweaveMock(file);
 
-      document.getElementById('mintButton').onclick = async () => {
-        if (!wallet || !wallet.publicKey) {
-          statusEl.textContent = '❌ 请先连接钱包';
-          return;
-        }
+        const connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('mainnet-beta'), 'confirmed');
+        const transaction = new solanaWeb3.Transaction().add(
+          new solanaWeb3.TransactionInstruction({
+            keys: [],
+            programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
+            data: new TextEncoder().encode(`NFT 铭刻: ${name} | ${description} | ImageURI: ${imageUri}`)
+          })
+        );
+        transaction.feePayer = provider.publicKey;
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
 
-        const name = document.getElementById('nftName').value;
-        const description = document.getElementById('nftDesc').value;
-        const file = document.getElementById('imageUpload').files[0];
+        const signed = await provider.signTransaction(transaction);
+        const signature = await connection.sendRawTransaction(signed.serialize());
+        await connection.confirmTransaction(signature);
 
-        if (!name || !file) {
-          statusEl.textContent = '❌ 请填写标题并上传图片';
-          return;
-        }
-
-        try {
-          statusEl.textContent = '准备中...';
-          
-          // 获取 Metaplex 实例
-          const metaplexLib = window.metaplex || window.metaplexFoundationJs;
-          if (!metaplexLib) {
-            throw new Error('Metaplex 库未加载，请刷新页面重试');
-          }
-
-          console.log('Metaplex 库对象:', metaplexLib);
-
-          // 创建连接
-          const connection = new window.solanaWeb3.Connection(
-            window.solanaWeb3.clusterApiUrl('devnet')
-          );
-
-          // 创建 Metaplex 实例
-          const metaplex = metaplexLib.Metaplex.make(connection)
-            .use(metaplexLib.walletAdapterIdentity(wallet))
-            .use(metaplexLib.bundlrStorage());
-
-          // 转换文件为 Metaplex 文件
-          statusEl.textContent = '处理图片文件...';
-          const mpFile = await metaplexLib.toMetaplexFileFromBrowser(file);
-          
-          // 上传图片
-          statusEl.textContent = '上传图片中...';
-          const imageUri = await metaplex.storage().upload(mpFile);
-          
-          // 上传元数据
-          statusEl.textContent = '上传元数据中...';
-          const { uri } = await metaplex.nfts().uploadMetadata({
-            name,
-            description,
-            image: imageUri
-          });
-          
-          // 创建 NFT
-          statusEl.textContent = '创建 NFT 中...';
-          const { nft } = await metaplex.nfts().create({
-            uri,
-            name,
-            sellerFeeBasisPoints: 0
-          });
-
-          statusEl.textContent = `✅ 成功！NFT 地址：${nft.address.toBase58()}`;
-        } catch (e) {
-          console.error('错误详情:', e);
-          statusEl.textContent = `❌ 错误: ${e.message}`;
-        }
-      };
-    </script>
-  </body>
+        statusEl.textContent = `✅ 铭刻完成！交易链接：https://explorer.solana.com/tx/${signature}`;
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = '❌ 错误：' + e.message;
+      }
+    };
+  </script>
+</body>
 </html>
