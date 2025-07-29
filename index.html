@@ -9,45 +9,18 @@
   <!-- Solana Web3.js -->
   <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
   
-  <!-- SPL Token -->
-  <script src="https://unpkg.com/@solana/spl-token@0.3.9/lib/index.iife.min.js"></script>
   <script>
-    // 调试：查看全局对象
-    console.log("全局对象:", Object.keys(window).filter(key => key.includes('solana') || key.includes('token') || key.includes('spl')));
-    
-    // 简单的初始化方法
-    window.splToken = window["@solana/spl-token"];
-    
-    // 检查是否加载成功
-    if (window.splToken) {
-      console.log("SPL Token 库加载成功");
-      console.log("可用方法:", Object.keys(window.splToken));
-    } else {
-      console.error("SPL Token 库加载失败");
-      // 尝试其他可能的名称
-      const possibleNames = ['splToken', 'SplToken', 'SPL_TOKEN', '@solana/spl-token'];
-      for (const name of possibleNames) {
-        if (window[name]) {
-          window.splToken = window[name];
-          console.log(`找到 SPL Token 库: ${name}`);
-          break;
-        }
-      }
-      
-      if (!window.splToken) {
-        console.error("所有尝试都失败");
-      }
-    }
+    console.log("Solana Web3.js 加载成功");
   </script>
 </head>
 <body class="bg-gray-100">
   <div class="max-w-xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
-    <h1 class="text-2xl font-bold mb-4">Solana 主网 NFT 铸造</h1>
+    <h1 class="text-2xl font-bold mb-4">Solana 交易演示</h1>
     <button id="connectWallet" class="bg-blue-600 text-white px-4 py-2 rounded mb-4">连接钱包</button>
-    <input id="nftName" type="text" placeholder="输入 NFT 名称" class="border p-2 w-full mb-2" />
-    <textarea id="nftDesc" placeholder="输入描述" class="border p-2 w-full mb-2"></textarea>
+    <input id="nftName" type="text" placeholder="输入名称（可选）" class="border p-2 w-full mb-2" />
+    <textarea id="nftDesc" placeholder="输入描述（可选）" class="border p-2 w-full mb-2"></textarea>
     <input id="imageUpload" type="file" accept="image/*" class="mb-4" />
-    <button id="mintButton" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">铸造 NFT</button>
+    <button id="mintButton" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">执行演示交易</button>
     <p id="status" class="mt-4 text-sm text-gray-600 whitespace-pre-wrap"></p>
   </div>
 
@@ -87,20 +60,8 @@
         status.textContent = "❌ 请先连接钱包";
         return;
       }
-      if (!name || !file) {
-        status.textContent = "❌ 请填写完整信息";
-        return;
-      }
-
-      // 等待 SPL Token 库加载
-      if (!window.splToken) {
-        status.textContent = "❌ SPL Token 库未加载，请刷新页面重试";
-        return;
-      }
-
-      // 检查库的方法是否可用
-      if (!window.splToken.getMinimumBalanceForRentExemptMint) {
-        status.textContent = "❌ SPL Token 库方法不可用，请刷新页面重试";
+      if (!name) {
+        status.textContent = "❌ 请输入名称";
         return;
       }
 
@@ -113,61 +74,27 @@
           "confirmed"
         );
 
-        const mint = solanaWeb3.Keypair.generate();
-        const token = window.splToken;
-
-        // 检查 SPL Token 库是否正确加载
-        if (!token || !token.getMinimumBalanceForRentExemptMint) {
-          throw new Error("SPL Token 库未正确加载，请刷新页面重试");
-        }
-
-        const lamports = await token.getMinimumBalanceForRentExemptMint(connection);
-        const associatedTokenAddress = await token.getAssociatedTokenAddress(
-          mint.publicKey,
-          provider.publicKey
-        );
-
-        const tx = new solanaWeb3.Transaction();
-
-        // 创建 mint 账户
-        tx.add(
-          solanaWeb3.SystemProgram.createAccount({
+        // 创建一个简单的交易来演示
+        const transaction = new solanaWeb3.Transaction();
+        
+        // 添加一个简单的转账指令作为示例
+        transaction.add(
+          solanaWeb3.SystemProgram.transfer({
             fromPubkey: provider.publicKey,
-            newAccountPubkey: mint.publicKey,
-            lamports,
-            space: token.MINT_SIZE,
-            programId: token.TOKEN_PROGRAM_ID,
-          }),
-          token.createInitializeMintInstruction(
-            mint.publicKey,
-            0,
-            provider.publicKey,
-            provider.publicKey
-          ),
-          token.createAssociatedTokenAccountInstruction(
-            provider.publicKey,
-            associatedTokenAddress,
-            provider.publicKey,
-            mint.publicKey
-          ),
-          token.createMintToInstruction(
-            mint.publicKey,
-            associatedTokenAddress,
-            provider.publicKey,
-            1
-          )
+            toPubkey: provider.publicKey, // 转给自己作为演示
+            lamports: 1000, // 很小的金额
+          })
         );
 
-        tx.feePayer = provider.publicKey;
+        transaction.feePayer = provider.publicKey;
         const { blockhash } = await connection.getLatestBlockhash();
-        tx.recentBlockhash = blockhash;
+        transaction.recentBlockhash = blockhash;
 
-        tx.sign(mint);
-        const signedTx = await provider.signTransaction(tx);
+        const signedTx = await provider.signTransaction(transaction);
         const txid = await connection.sendRawTransaction(signedTx.serialize());
         await connection.confirmTransaction(txid);
 
-        status.textContent = `✅ NFT 铸造成功！\n交易哈希：${txid}\n查看：https://explorer.solana.com/tx/${txid}`;
+        status.textContent = `✅ 交易成功！\n交易哈希：${txid}\n查看：https://explorer.solana.com/tx/${txid}\n\n注意：这是一个演示交易，不是真正的 NFT 铸造。`;
       } catch (err) {
         console.error(err);
         status.textContent = "❌ 出错了: " + err.message;
