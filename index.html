@@ -67,13 +67,23 @@
 
     // 创建 Solana NFT 代币
     async function createSolanaNFT(connection, provider, name, desc, file, status) {
-      status.textContent = "🔄 正在创建 Solana 代币...";
-      
-      // 生成新的密钥对作为 mint 账户
-      const mintKeypair = solanaWeb3.Keypair.generate();
-      
-      // 计算所需的 lamports
-      const lamports = await connection.getMinimumBalanceForRentExemption(82);
+      try {
+        status.textContent = "🔄 正在创建 Solana 代币...";
+        
+        // 检查必要的对象
+        if (!provider || !provider.publicKey) {
+          throw new Error("钱包未连接");
+        }
+        
+        console.log("钱包地址:", provider.publicKey.toString());
+        
+        // 生成新的密钥对作为 mint 账户
+        const mintKeypair = solanaWeb3.Keypair.generate();
+        console.log("Mint 地址:", mintKeypair.publicKey.toString());
+        
+        // 计算所需的 lamports
+        const lamports = await connection.getMinimumBalanceForRentExemption(82);
+        console.log("所需 lamports:", lamports);
       
       // 创建交易
       const transaction = new solanaWeb3.Transaction();
@@ -93,8 +103,14 @@
       const initMintData = Buffer.alloc(82);
       initMintData.writeUInt8(0, 0); // InitializeMint instruction
       initMintData.writeUInt8(0, 1); // decimals = 0 (NFT)
-      provider.publicKey.toBytes().copy(initMintData, 2); // mint authority
-      provider.publicKey.toBytes().copy(initMintData, 34); // freeze authority
+      
+      // 写入 mint authority
+      const mintAuthorityBytes = provider.publicKey.toBuffer();
+      mintAuthorityBytes.copy(initMintData, 2);
+      
+      // 写入 freeze authority
+      const freezeAuthorityBytes = provider.publicKey.toBuffer();
+      freezeAuthorityBytes.copy(initMintData, 34);
       
       transaction.add(
         new solanaWeb3.TransactionInstruction({
@@ -155,6 +171,10 @@
       };
       
       status.textContent = `✅ NFT 创建成功！\n\n🎨 NFT 名称：${name}\n📝 描述：${desc}\n🔗 Mint 地址：${mintKeypair.publicKey.toString()}\n💰 代币账户：${associatedTokenAccount.toString()}\n📊 交易哈希：${txid}\n\n🌐 查看交易：https://explorer.solana.com/tx/${txid}\n🔍 查看 NFT：https://explorer.solana.com/address/${mintKeypair.publicKey.toString()}\n\n💾 元数据已保存到本地`;
+    } catch (err) {
+      console.error(err);
+      status.textContent = "❌ 出错了: " + err.message;
+    }
     }
     
     // 辅助函数：文件转 Base64
@@ -251,13 +271,41 @@
           "confirmed"
         );
 
-        // 创建 NFT 代币
-        await createSolanaNFT(connection, provider, name, desc, file, status);
+        // 先测试简单的交易
+        await testSimpleTransaction(connection, provider, status);
+        
+        // 如果简单交易成功，再创建 NFT
+        // await createSolanaNFT(connection, provider, name, desc, file, status);
       } catch (err) {
         console.error(err);
         status.textContent = "❌ 出错了: " + err.message;
       }
     };
+    
+    // 测试简单交易
+    async function testSimpleTransaction(connection, provider, status) {
+      status.textContent = "🧪 正在测试简单交易...";
+      
+      // 创建一个简单的转账交易
+      const transaction = new solanaWeb3.Transaction();
+      transaction.add(
+        solanaWeb3.SystemProgram.transfer({
+          fromPubkey: provider.publicKey,
+          toPubkey: provider.publicKey, // 转给自己
+          lamports: 1000, // 很小的金额
+        })
+      );
+      
+      transaction.feePayer = provider.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      
+      const signedTx = await provider.signTransaction(transaction);
+      const txid = await connection.sendRawTransaction(signedTx.serialize());
+      await connection.confirmTransaction(txid);
+      
+      status.textContent = `✅ 测试交易成功！\n\n交易哈希：${txid}\n\n现在可以尝试创建 NFT 了！`;
+    }
   </script>
 </body>
 </html>
