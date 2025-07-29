@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>铭刻 NFT 到 Solana 链</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+    <script src="https://unpkg.com/@metaplex-foundation/js/dist/index.iife.js"></script>
+    <script src="https://unpkg.com/@solana/wallet-adapter-wallets@latest/lib/index.iife.js"></script>
+    <script src="https://unpkg.com/@solana/wallet-adapter-base@latest/lib/index.iife.js"></script>
+    <script src="https://unpkg.com/@solana/wallet-adapter-react-ui@latest/lib/index.iife.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@solana/wallet-adapter-react-ui/styles.css" />
+  </head>
+  <body class="bg-gray-100">
+    <div class="max-w-xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
+      <h1 class="text-2xl font-bold mb-4">铭刻图片 + 文字到 Solana 链</h1>
+      <button id="connectWallet" class="bg-blue-600 text-white px-4 py-2 rounded mb-4">连接钱包</button>
+      <input id="nftName" type="text" placeholder="输入标题" class="border p-2 w-full mb-2" />
+      <textarea id="nftDesc" placeholder="输入描述/铭刻文字" class="border p-2 w-full mb-2"></textarea>
+      <input id="imageUpload" type="file" accept="image/*" class="mb-4" />
+      <button id="mintButton" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">铭刻 NFT</button>
+      <p id="status" class="mt-4 text-sm text-gray-600"></p>
+    </div>
+
+    <script>
+      let wallet = null;
+      const statusEl = document.getElementById('status');
+
+      document.getElementById('connectWallet').onclick = async () => {
+        if ('solana' in window) {
+          const provider = window.solana;
+          await provider.connect();
+          wallet = provider;
+          document.getElementById('connectWallet').innerText = '✅ 钱包已连接';
+        } else {
+          alert('请安装 Phantom 钱包');
+        }
+      };
+
+      document.getElementById('mintButton').onclick = async () => {
+        if (!wallet || !wallet.publicKey) {
+          statusEl.textContent = '❌ 请先连接钱包';
+          return;
+        }
+
+        const name = document.getElementById('nftName').value;
+        const description = document.getElementById('nftDesc').value;
+        const file = document.getElementById('imageUpload').files[0];
+
+        if (!name || !file) {
+          statusEl.textContent = '❌ 请填写标题并上传图片';
+          return;
+        }
+
+        try {
+          statusEl.textContent = '上传中...';
+          const connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'));
+          const metaplex = window.metaplexFoundationJs.Metaplex.make(connection)
+            .use(window.metaplexFoundationJs.walletAdapterIdentity(wallet))
+            .use(window.metaplexFoundationJs.bundlrStorage());
+
+          const mpFile = await window.metaplexFoundationJs.toMetaplexFileFromBrowser(file);
+          const imageUri = await metaplex.storage().upload(mpFile);
+          const { uri } = await metaplex.nfts().uploadMetadata({ name, description, image: imageUri });
+          const { nft } = await metaplex.nfts().create({ uri, name, sellerFeeBasisPoints: 0 });
+
+          statusEl.textContent = `✅ 成功！NFT 地址：${nft.address.toBase58()}`;
+        } catch (e) {
+          console.error(e);
+          statusEl.textContent = '❌ 错误，查看控制台';
+        }
+      };
+    </script>
+  </body>
+</html>
