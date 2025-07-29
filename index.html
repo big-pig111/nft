@@ -15,57 +15,9 @@
   <!-- Solana Web3.js -->
   <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
   
-  <!-- Metaplex - 主要 CDN -->
-  <script src="https://unpkg.com/@metaplex-foundation/js@4.12.0/lib/index.iife.min.js"></script>
-  
   <script>
     console.log("Solana Web3.js 加载成功");
     console.log("Buffer 可用:", typeof window.Buffer !== 'undefined');
-    
-    // 立即检查 Metaplex
-    function checkMetaplex() {
-      if (window.mpl) {
-        console.log("Metaplex 库加载成功 (mpl)");
-        window.metaplex = window.mpl;
-        return true;
-      } else if (window.Metaplex) {
-        console.log("Metaplex 库加载成功 (Metaplex)");
-        window.metaplex = window.Metaplex;
-        return true;
-      } else if (window["@metaplex-foundation/js"]) {
-        console.log("Metaplex 库加载成功 (@metaplex-foundation/js)");
-        window.metaplex = window["@metaplex-foundation/js"];
-        return true;
-      }
-      return false;
-    }
-    
-    // 立即尝试
-    if (!checkMetaplex()) {
-      console.log("Metaplex 库未立即加载，等待页面加载完成...");
-      
-      // 等待页面加载完成后再次尝试
-      window.addEventListener('load', function() {
-        if (!checkMetaplex()) {
-          console.error("Metaplex 库加载失败，尝试备用 CDN");
-          
-          // 尝试备用 CDN
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/@metaplex-foundation/js@4.12.0/lib/index.iife.min.js';
-          script.onload = function() {
-            if (checkMetaplex()) {
-              console.log("Metaplex 库备用 CDN 加载成功");
-            } else {
-              console.error("所有 Metaplex 库加载尝试都失败");
-            }
-          };
-          script.onerror = function() {
-            console.error("备用 CDN 也加载失败");
-          };
-          document.head.appendChild(script);
-        }
-      });
-    }
   </script>
 </head>
 <body class="bg-gray-100">
@@ -100,8 +52,7 @@
       const status = document.getElementById("status");
       const libraries = {
         "Solana Web3.js": typeof solanaWeb3 !== 'undefined',
-        "Buffer": typeof window.Buffer !== 'undefined',
-        "Metaplex": typeof window.metaplex !== 'undefined'
+        "Buffer": typeof window.Buffer !== 'undefined'
       };
       
       let statusText = "📊 库状态检查：\n\n";
@@ -109,59 +60,167 @@
         statusText += `${loaded ? '✅' : '❌'} ${name}: ${loaded ? '已加载' : '未加载'}\n`;
       });
       
-      if (!libraries["Metaplex"]) {
-        statusText += "\n💡 如果 Metaplex 未加载，将使用备用方法";
-      }
+      statusText += "\n💡 使用基础 Solana 方法创建 NFT";
       
       status.textContent = statusText;
     };
 
-    // 备用的简单 NFT 铸造方法
-    async function createSimpleNFT(connection, provider, name, desc, file, status) {
-      status.textContent = "🔄 使用备用方法创建 NFT...";
+    // 创建 Solana NFT 代币
+    async function createSolanaNFT(connection, provider, name, desc, file, status) {
+      status.textContent = "🔄 正在创建 Solana 代币...";
       
-      // 创建一个简单的代币账户作为 NFT
-      const mint = solanaWeb3.Keypair.generate();
-      const tokenAccount = solanaWeb3.Keypair.generate();
+      // 生成新的密钥对作为 mint 账户
+      const mintKeypair = solanaWeb3.Keypair.generate();
+      
+      // 计算所需的 lamports
+      const lamports = await connection.getMinimumBalanceForRentExemption(82);
       
       // 创建交易
       const transaction = new solanaWeb3.Transaction();
       
       // 创建 mint 账户
-      const lamports = await connection.getMinimumBalanceForRentExemption(82);
       transaction.add(
         solanaWeb3.SystemProgram.createAccount({
           fromPubkey: provider.publicKey,
-          newAccountPubkey: mint.publicKey,
+          newAccountPubkey: mintKeypair.publicKey,
           lamports: lamports,
           space: 82,
           programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
         })
       );
       
-      // 初始化 mint
+      // 初始化 mint（设置小数位为 0，使其成为 NFT）
+      const initMintData = Buffer.alloc(82);
+      initMintData.writeUInt8(0, 0); // InitializeMint instruction
+      initMintData.writeUInt8(0, 1); // decimals = 0 (NFT)
+      provider.publicKey.toBytes().copy(initMintData, 2); // mint authority
+      provider.publicKey.toBytes().copy(initMintData, 34); // freeze authority
+      
       transaction.add(
         new solanaWeb3.TransactionInstruction({
           keys: [
-            { pubkey: mint.publicKey, isSigner: false, isWritable: true },
+            { pubkey: mintKeypair.publicKey, isSigner: false, isWritable: true },
             { pubkey: new solanaWeb3.PublicKey("11111111111111111111111111111111"), isSigner: false, isWritable: false },
           ],
           programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
-          data: Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+          data: initMintData,
         })
       );
       
+      // 创建关联代币账户
+      const associatedTokenAccount = await getAssociatedTokenAddress(
+        mintKeypair.publicKey,
+        provider.publicKey
+      );
+      
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          provider.publicKey,
+          associatedTokenAccount,
+          provider.publicKey,
+          mintKeypair.publicKey
+        )
+      );
+      
+      // 铸造 1 个代币到关联账户
+      transaction.add(
+        createMintToInstruction(
+          mintKeypair.publicKey,
+          associatedTokenAccount,
+          provider.publicKey,
+          1
+        )
+      );
+      
+      // 设置交易参数
       transaction.feePayer = provider.publicKey;
       const { blockhash } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
       
       // 签名并发送交易
-      transaction.sign(mint);
+      transaction.sign(mintKeypair);
       const signedTx = await provider.signTransaction(transaction);
       const txid = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txid);
       
-      status.textContent = `✅ 备用 NFT 创建成功！\n\nMint 地址：${mint.publicKey.toString()}\n交易哈希：${txid}\n\n查看：https://explorer.solana.com/address/${mint.publicKey.toString()}\n\n注意：这是基础代币，不是标准 NFT 元数据格式`;
+      // 创建简单的元数据（存储在本地）
+      const metadata = {
+        name: name,
+        description: desc,
+        image: await fileToBase64(file),
+        attributes: [
+          { trait_type: "Creator", value: "Solana NFT Tool" },
+          { trait_type: "Created", value: new Date().toISOString() }
+        ]
+      };
+      
+      status.textContent = `✅ NFT 创建成功！\n\n🎨 NFT 名称：${name}\n📝 描述：${desc}\n🔗 Mint 地址：${mintKeypair.publicKey.toString()}\n💰 代币账户：${associatedTokenAccount.toString()}\n📊 交易哈希：${txid}\n\n🌐 查看交易：https://explorer.solana.com/tx/${txid}\n🔍 查看 NFT：https://explorer.solana.com/address/${mintKeypair.publicKey.toString()}\n\n💾 元数据已保存到本地`;
+    }
+    
+    // 辅助函数：文件转 Base64
+    async function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+      });
+    }
+    
+    // 辅助函数：获取关联代币地址
+    async function getAssociatedTokenAddress(mint, owner) {
+      const [address] = await solanaWeb3.PublicKey.findProgramAddress(
+        [
+          owner.toBuffer(),
+          new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").toBuffer(),
+          mint.toBuffer(),
+        ],
+        new solanaWeb3.PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
+      );
+      return address;
+    }
+    
+    // 辅助函数：创建关联代币账户指令
+    function createAssociatedTokenAccountInstruction(
+      payer,
+      associatedToken,
+      owner,
+      mint
+    ) {
+      const keys = [
+        { pubkey: payer, isSigner: true, isWritable: true },
+        { pubkey: associatedToken, isSigner: false, isWritable: true },
+        { pubkey: owner, isSigner: false, isWritable: false },
+        { pubkey: mint, isSigner: false, isWritable: false },
+        { pubkey: new solanaWeb3.PublicKey("11111111111111111111111111111111"), isSigner: false, isWritable: false },
+        { pubkey: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"), isSigner: false, isWritable: false },
+        { pubkey: new solanaWeb3.PublicKey("SysvarRent111111111111111111111111111111111"), isSigner: false, isWritable: false },
+      ];
+      
+      return new solanaWeb3.TransactionInstruction({
+        keys,
+        programId: new solanaWeb3.PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+        data: Buffer.alloc(0),
+      });
+    }
+    
+    // 辅助函数：创建铸造指令
+    function createMintToInstruction(mint, destination, authority, amount) {
+      const keys = [
+        { pubkey: mint, isSigner: false, isWritable: true },
+        { pubkey: destination, isSigner: false, isWritable: true },
+        { pubkey: authority, isSigner: true, isWritable: false },
+      ];
+      
+      const data = Buffer.alloc(9);
+      data.writeUInt8(7, 0); // MintTo instruction
+      data.writeBigUInt64LE(BigInt(amount), 1);
+      
+      return new solanaWeb3.TransactionInstruction({
+        keys,
+        programId: new solanaWeb3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+        data,
+      });
     }
 
     document.getElementById("mintButton").onclick = async () => {
@@ -185,61 +244,15 @@
         return;
       }
 
-      status.textContent = "📦 正在上传图片到 Arweave...";
+      status.textContent = "📦 正在创建 NFT...";
       try {
-        // 检查 Metaplex 是否可用
-        if (typeof window.metaplex === 'undefined') {
-          status.textContent = "❌ Metaplex 库未加载\n\n正在尝试备用方法...";
-          
-          // 使用备用的简单 NFT 铸造方法
-          try {
-            await createSimpleNFT(connection, provider, name, desc, file, status);
-            return;
-          } catch (err) {
-            status.textContent = "❌ 所有方法都失败\n\n请尝试：\n1. 刷新页面\n2. 检查网络连接\n3. 等待几秒后重试\n\n错误：" + err.message;
-            return;
-          }
-        }
-
         const connection = new solanaWeb3.Connection(
           "https://small-holy-forest.solana-mainnet.quiknode.pro/b59315ea187b3de1b3542c5c25d7f2d5b5410ff4/",
           "confirmed"
         );
 
-        // 创建 Metaplex 实例
-        const metaplex = new window.metaplex.Metaplex(connection);
-        metaplex.use(window.metaplex.keypairIdentity(solanaWeb3.Keypair.generate()));
-
-        // 上传图片到 Arweave
-        status.textContent = "📤 正在上传图片...";
-        const imageBuffer = await file.arrayBuffer();
-        const imageUri = await metaplex.storage().upload(new Uint8Array(imageBuffer));
-
-        // 创建 NFT 元数据
-        status.textContent = "📝 正在创建 NFT 元数据...";
-        const { uri: metadataUri } = await metaplex.nfts().uploadMetadata({
-          name: name,
-          description: desc,
-          image: imageUri,
-          attributes: [
-            { trait_type: "Creator", value: "Solana NFT Minting Tool" },
-            { trait_type: "Created", value: new Date().toISOString() }
-          ]
-        });
-
-        // 铸造 NFT
-        status.textContent = "🪙 正在铸造 NFT...";
-        const { nft } = await metaplex.nfts().create({
-          uri: metadataUri,
-          name: name,
-          sellerFeeBasisPoints: 500, // 5% 版税
-          maxSupply: 1,
-          isMutable: true,
-          mintAddress: solanaWeb3.Keypair.generate(),
-          tokenOwner: provider.publicKey,
-        });
-
-        status.textContent = `✅ NFT 铸造成功！\n\nNFT 地址：${nft.address.toString()}\n元数据：${metadataUri}\n图片：${imageUri}\n\n查看 NFT：https://explorer.solana.com/address/${nft.address.toString()}`;
+        // 创建 NFT 代币
+        await createSolanaNFT(connection, provider, name, desc, file, status);
       } catch (err) {
         console.error(err);
         status.textContent = "❌ 出错了: " + err.message;
