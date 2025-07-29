@@ -6,11 +6,7 @@
     <title>铭刻 NFT 到 Solana 链</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
-    <script src="https://unpkg.com/@metaplex-foundation/js/dist/index.iife.js"></script>
-    <script src="https://unpkg.com/@solana/wallet-adapter-wallets@latest/lib/index.iife.js"></script>
-    <script src="https://unpkg.com/@solana/wallet-adapter-base@latest/lib/index.iife.js"></script>
-    <script src="https://unpkg.com/@solana/wallet-adapter-react-ui@latest/lib/index.iife.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/@solana/wallet-adapter-react-ui/styles.css" />
+    <script src="https://unpkg.com/@metaplex-foundation/js@latest/dist/index.iife.js"></script>
   </head>
   <body class="bg-gray-100">
     <div class="max-w-xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
@@ -27,12 +23,31 @@
       let wallet = null;
       const statusEl = document.getElementById('status');
 
+      // Wait for libraries to load
+      window.addEventListener('load', () => {
+        if (typeof window.solanaWeb3 === 'undefined') {
+          statusEl.textContent = '❌ Solana Web3 库加载失败';
+          return;
+        }
+        if (typeof window.metaplex === 'undefined') {
+          statusEl.textContent = '❌ Metaplex 库加载失败';
+          return;
+        }
+        statusEl.textContent = '✅ 库加载完成，可以开始使用';
+      });
+
       document.getElementById('connectWallet').onclick = async () => {
         if ('solana' in window) {
-          const provider = window.solana;
-          await provider.connect();
-          wallet = provider;
-          document.getElementById('connectWallet').innerText = '✅ 钱包已连接';
+          try {
+            const provider = window.solana;
+            await provider.connect();
+            wallet = provider;
+            document.getElementById('connectWallet').innerText = '✅ 钱包已连接';
+            statusEl.textContent = `✅ 钱包地址: ${wallet.publicKey.toString()}`;
+          } catch (error) {
+            console.error('连接钱包失败:', error);
+            statusEl.textContent = '❌ 连接钱包失败';
+          }
         } else {
           alert('请安装 Phantom 钱包');
         }
@@ -55,20 +70,44 @@
 
         try {
           statusEl.textContent = '上传中...';
-          const connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'));
-          const metaplex = window.metaplexFoundationJs.Metaplex.make(connection)
-            .use(window.metaplexFoundationJs.walletAdapterIdentity(wallet))
-            .use(window.metaplexFoundationJs.bundlrStorage());
+          
+          // Create connection
+          const connection = new window.solanaWeb3.Connection(
+            window.solanaWeb3.clusterApiUrl('devnet')
+          );
 
-          const mpFile = await window.metaplexFoundationJs.toMetaplexFileFromBrowser(file);
+          // Create Metaplex instance
+          const metaplex = window.metaplex.Metaplex.make(connection)
+            .use(window.metaplex.walletAdapterIdentity(wallet))
+            .use(window.metaplex.bundlrStorage());
+
+          // Convert file to Metaplex file
+          const mpFile = await window.metaplex.toMetaplexFileFromBrowser(file);
+          
+          // Upload image
+          statusEl.textContent = '上传图片中...';
           const imageUri = await metaplex.storage().upload(mpFile);
-          const { uri } = await metaplex.nfts().uploadMetadata({ name, description, image: imageUri });
-          const { nft } = await metaplex.nfts().create({ uri, name, sellerFeeBasisPoints: 0 });
+          
+          // Upload metadata
+          statusEl.textContent = '上传元数据中...';
+          const { uri } = await metaplex.nfts().uploadMetadata({
+            name,
+            description,
+            image: imageUri
+          });
+          
+          // Create NFT
+          statusEl.textContent = '创建 NFT 中...';
+          const { nft } = await metaplex.nfts().create({
+            uri,
+            name,
+            sellerFeeBasisPoints: 0
+          });
 
           statusEl.textContent = `✅ 成功！NFT 地址：${nft.address.toBase58()}`;
         } catch (e) {
-          console.error(e);
-          statusEl.textContent = '❌ 错误，查看控制台';
+          console.error('错误详情:', e);
+          statusEl.textContent = `❌ 错误: ${e.message}`;
         }
       };
     </script>
