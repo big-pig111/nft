@@ -10,18 +10,34 @@
   <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
   
   <!-- SPL Token -->
-  <script src="https://unpkg.com/@solana/spl-token@0.3.8/lib/index.iife.min.js"></script>
+  <script src="https://unpkg.com/@solana/spl-token@0.3.9/lib/index.iife.min.js"></script>
   <script>
-    // 等待页面加载完成后再初始化
-    window.addEventListener('load', function() {
-      // 修复 splToken 全局未定义问题
-      if (window["@solana/spl-token"]) {
-        window.splToken = window["@solana/spl-token"];
-        console.log("SPL Token 库加载成功");
-      } else {
-        console.error("SPL Token 库加载失败");
+    // 调试：查看全局对象
+    console.log("全局对象:", Object.keys(window).filter(key => key.includes('solana') || key.includes('token') || key.includes('spl')));
+    
+    // 简单的初始化方法
+    window.splToken = window["@solana/spl-token"];
+    
+    // 检查是否加载成功
+    if (window.splToken) {
+      console.log("SPL Token 库加载成功");
+      console.log("可用方法:", Object.keys(window.splToken));
+    } else {
+      console.error("SPL Token 库加载失败");
+      // 尝试其他可能的名称
+      const possibleNames = ['splToken', 'SplToken', 'SPL_TOKEN', '@solana/spl-token'];
+      for (const name of possibleNames) {
+        if (window[name]) {
+          window.splToken = window[name];
+          console.log(`找到 SPL Token 库: ${name}`);
+          break;
+        }
       }
-    });
+      
+      if (!window.splToken) {
+        console.error("所有尝试都失败");
+      }
+    }
   </script>
 </head>
 <body class="bg-gray-100">
@@ -79,6 +95,12 @@
       // 等待 SPL Token 库加载
       if (!window.splToken) {
         status.textContent = "❌ SPL Token 库未加载，请刷新页面重试";
+        return;
+      }
+
+      // 检查库的方法是否可用
+      if (!window.splToken.getMinimumBalanceForRentExemptMint) {
+        status.textContent = "❌ SPL Token 库方法不可用，请刷新页面重试";
         return;
       }
 
